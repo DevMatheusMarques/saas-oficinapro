@@ -1,14 +1,14 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, Download, FileText, BarChart3, DollarSign, Package, Users } from "lucide-react"
+import { Plus, Download, FileText, BarChart3, DollarSign, Package, Users, FileDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { useToast } from "@/hooks/use-toast"
+import { useToast } from "@/contexts/toast-context"
 import { useCustomers } from "@/hooks/use-customers"
 import { useParts } from "@/hooks/use-parts"
 import { useServiceOrders } from "@/hooks/use-service-orders"
@@ -29,7 +29,7 @@ export default function ReportsPage() {
   const [endDate, setEndDate] = useState(format(endOfMonth(new Date()), "yyyy-MM-dd"))
   const [isGenerating, setIsGenerating] = useState(false)
 
-  const { toast } = useToast()
+  const { success, error } = useToast()
   const { customers } = useCustomers()
   const { parts } = useParts()
   const { serviceOrders } = useServiceOrders()
@@ -76,10 +76,10 @@ export default function ReportsPage() {
           title: "Relatório de Clientes",
           headers: ["Nome", "Email", "Telefone", "Data de Cadastro"],
           data: customers.map((customer) => [
-            customer.name,
-            customer.email,
-            customer.phone,
-            format(new Date(customer.created_at), "dd/MM/yyyy", { locale: ptBR }),
+            customer.name || "N/A",
+            customer.email || "N/A",
+            customer.phone || "N/A",
+            customer.created_at ? format(new Date(customer.created_at), "dd/MM/yyyy", { locale: ptBR }) : "N/A",
           ]),
         }
 
@@ -88,43 +88,45 @@ export default function ReportsPage() {
           title: "Relatório de Estoque",
           headers: ["Peça", "Código", "Categoria", "Estoque Atual", "Estoque Mínimo", "Status", "Valor Total"],
           data: parts.map((part) => {
-            const status =
-              part.quantity === 0 ? "Sem estoque" : part.quantity <= part.minimum_stock ? "Estoque baixo" : "Normal"
+            const quantity = part.quantity || part.stockQuantity || 0
+            const minStock = part.minimum_stock || part.minStockLevel || 0
+            const costPrice = part.cost_price || part.costPrice || 0
+            const status = quantity === 0 ? "Sem estoque" : quantity <= minStock ? "Estoque baixo" : "Normal"
             return [
-              part.name,
-              part.code,
-              part.category,
-              `${part.quantity} ${part.unit}`,
-              `${part.minimum_stock} ${part.unit}`,
+              part.name || "N/A",
+              part.code || part.partNumber || "N/A",
+              part.category || "N/A",
+              `${quantity} ${part.unit || "un"}`,
+              `${minStock} ${part.unit || "un"}`,
               status,
-              new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
-                part.quantity * part.cost_price,
-              ),
+              new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(quantity * costPrice),
             ]
           }),
         }
 
       case "financial":
         const filteredPayments = payments.filter((payment) => {
-          const paymentDate = new Date(payment.created_at)
+          const paymentDate = new Date(payment.created_at || payment.paymentDate)
           return paymentDate >= startDateObj && paymentDate <= endDateObj
         })
 
         const totalReceived = filteredPayments
-          .filter((p) => p.type === "received")
-          .reduce((sum, p) => sum + p.amount, 0)
+          .filter((p) => p.type === "received" || p.type === "income")
+          .reduce((sum, p) => sum + (p.amount || 0), 0)
 
-        const totalPaid = filteredPayments.filter((p) => p.type === "paid").reduce((sum, p) => sum + p.amount, 0)
+        const totalPaid = filteredPayments
+          .filter((p) => p.type === "paid" || p.type === "expense")
+          .reduce((sum, p) => sum + (p.amount || 0), 0)
 
         return {
           title: `Relatório Financeiro - ${format(startDateObj, "dd/MM/yyyy", { locale: ptBR })} a ${format(endDateObj, "dd/MM/yyyy", { locale: ptBR })}`,
           headers: ["Descrição", "Tipo", "Valor", "Data", "Status"],
           data: [
             ...filteredPayments.map((payment) => [
-              payment.description,
-              payment.type === "received" ? "Recebimento" : "Pagamento",
-              new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(payment.amount),
-              format(new Date(payment.created_at), "dd/MM/yyyy", { locale: ptBR }),
+              payment.description || "N/A",
+              payment.type === "received" || payment.type === "income" ? "Recebimento" : "Pagamento",
+              new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(payment.amount || 0),
+              payment.created_at ? format(new Date(payment.created_at), "dd/MM/yyyy", { locale: ptBR }) : "N/A",
               payment.status === "paid" ? "Pago" : payment.status === "pending" ? "Pendente" : "Cancelado",
             ]),
             ["", "", "", "", ""],
@@ -154,7 +156,7 @@ export default function ReportsPage() {
 
       case "services":
         const filteredServices = serviceOrders.filter((service) => {
-          const serviceDate = new Date(service.created_at)
+          const serviceDate = new Date(service.created_at || service.createdAt)
           return serviceDate >= startDateObj && serviceDate <= endDateObj
         })
 
@@ -162,8 +164,8 @@ export default function ReportsPage() {
           title: `Relatório de Serviços - ${format(startDateObj, "dd/MM/yyyy", { locale: ptBR })} a ${format(endDateObj, "dd/MM/yyyy", { locale: ptBR })}`,
           headers: ["Cliente", "Motocicleta", "Status", "Valor", "Data"],
           data: filteredServices.map((service) => [
-            service.customer_name,
-            `${service.motorcycle_model} - ${service.motorcycle_plate}`,
+            service.customer_name || service.customerName || "N/A",
+            `${service.motorcycle_model || service.motorcycleModel || "N/A"} - ${service.motorcycle_plate || service.motorcyclePlate || "N/A"}`,
             service.status === "pending"
               ? "Pendente"
               : service.status === "in_progress"
@@ -171,8 +173,10 @@ export default function ReportsPage() {
                 : service.status === "completed"
                   ? "Concluída"
                   : "Cancelada",
-            new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(service.total_amount),
-            format(new Date(service.created_at), "dd/MM/yyyy", { locale: ptBR }),
+            new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+              service.total_amount || service.totalAmount || 0,
+            ),
+            service.created_at ? format(new Date(service.created_at), "dd/MM/yyyy", { locale: ptBR }) : "N/A",
           ]),
         }
 
@@ -186,6 +190,11 @@ export default function ReportsPage() {
   }
 
   const downloadCSV = (reportData: ReportData) => {
+    if (reportData.data.length === 0) {
+      error("Erro", "Não há dados para gerar o relatório")
+      return
+    }
+
     const csvContent = [
       reportData.headers.join(","),
       ...reportData.data.map((row) => row.map((cell) => `"${cell}"`).join(",")),
@@ -202,58 +211,104 @@ export default function ReportsPage() {
     document.body.removeChild(link)
   }
 
-  const handleQuickReport = async (type: string) => {
+  const downloadPDF = async (reportData: ReportData) => {
+    if (reportData.data.length === 0) {
+      error("Erro", "Não há dados para gerar o relatório")
+      return
+    }
+
+    try {
+      // Importar jsPDF dinamicamente
+      const { jsPDF } = await import("jspdf")
+      const doc = new jsPDF()
+
+      // Título
+      doc.setFontSize(16)
+      doc.text(reportData.title, 20, 20)
+
+      // Data de geração
+      doc.setFontSize(10)
+      doc.text(`Gerado em: ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`, 20, 30)
+
+      // Cabeçalhos
+      let yPosition = 50
+      doc.setFontSize(12)
+      doc.setFont(undefined, "bold")
+
+      const columnWidth = 180 / reportData.headers.length
+      reportData.headers.forEach((header, index) => {
+        doc.text(header, 20 + index * columnWidth, yPosition)
+      })
+
+      // Dados
+      doc.setFont(undefined, "normal")
+      doc.setFontSize(10)
+      yPosition += 10
+
+      reportData.data.forEach((row, rowIndex) => {
+        if (yPosition > 270) {
+          // Nova página se necessário
+          doc.addPage()
+          yPosition = 20
+        }
+
+        row.forEach((cell, cellIndex) => {
+          const text = String(cell).substring(0, 25) // Limitar texto
+          doc.text(text, 20 + cellIndex * columnWidth, yPosition)
+        })
+        yPosition += 8
+      })
+
+      doc.save(`${reportData.title.replace(/\s+/g, "_")}.pdf`)
+      success("Sucesso", "Relatório PDF gerado com sucesso!")
+    } catch (err) {
+      error("Erro", "Erro ao gerar PDF. Baixando como CSV...")
+      downloadCSV(reportData)
+    }
+  }
+
+  const handleQuickReport = async (type: string, format: "csv" | "pdf" = "csv") => {
     setIsGenerating(true)
     try {
       const reportData = generateReportData(type)
-      downloadCSV(reportData)
-      toast({
-        title: "Sucesso",
-        description: "Relatório gerado e baixado com sucesso!",
-      })
-    } catch (error) {
-      toast({
-        title: "Erro",
-        description: "Erro ao gerar relatório.",
-        variant: "destructive",
-      })
+      if (format === "pdf") {
+        await downloadPDF(reportData)
+      } else {
+        downloadCSV(reportData)
+      }
+      success("Sucesso", `Relatório ${format.toUpperCase()} gerado e baixado com sucesso!`)
+    } catch (err) {
+      error("Erro", "Erro ao gerar relatório.")
     } finally {
       setIsGenerating(false)
     }
   }
 
-  const handleCustomReport = async () => {
+  const handleCustomReport = async (format: "csv" | "pdf" = "csv") => {
     if (!reportType) {
-      toast({
-        title: "Erro",
-        description: "Selecione o tipo de relatório.",
-        variant: "destructive",
-      })
+      error("Erro", "Selecione o tipo de relatório.")
       return
     }
 
     setIsGenerating(true)
     try {
       const reportData = generateReportData(reportType, startDate, endDate)
-      downloadCSV(reportData)
-      toast({
-        title: "Sucesso",
-        description: "Relatório personalizado gerado com sucesso!",
-      })
+      if (format === "pdf") {
+        await downloadPDF(reportData)
+      } else {
+        downloadCSV(reportData)
+      }
+      success("Sucesso", `Relatório personalizado ${format.toUpperCase()} gerado com sucesso!`)
       setIsNewReportOpen(false)
-    } catch (error) {
-      toast({
-        title: "Erro",
-        description: "Erro ao gerar relatório personalizado.",
-        variant: "destructive",
-      })
+    } catch (err) {
+      error("Erro", "Erro ao gerar relatório personalizado.")
     } finally {
       setIsGenerating(false)
     }
   }
 
   return (
-    <div className="space-y-6">
+    <div className="container mx-auto p-6 space-y-8">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Relatórios</h1>
@@ -266,29 +321,41 @@ export default function ReportsPage() {
       </div>
 
       {/* Quick Reports */}
-      <div>
-        <h2 className="text-xl font-semibold mb-4">Relatórios Rápidos</h2>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="space-y-4">
+        <h2 className="text-xl font-semibold">Relatórios Rápidos</h2>
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           {quickReports.map((report) => (
-            <Card key={report.type} className="cursor-pointer hover:shadow-md transition-shadow">
+            <Card key={report.type} className="hover:shadow-lg transition-shadow">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">{report.title}</CardTitle>
                 <div className={`p-2 rounded-md ${report.color}`}>
                   <report.icon className="h-4 w-4 text-white" />
                 </div>
               </CardHeader>
-              <CardContent>
-                <CardDescription className="mb-4">{report.description}</CardDescription>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleQuickReport(report.type)}
-                  disabled={isGenerating}
-                  className="w-full"
-                >
-                  <Download className="mr-2 h-4 w-4" />
-                  {isGenerating ? "Gerando..." : "Baixar"}
-                </Button>
+              <CardContent className="space-y-4">
+                <CardDescription>{report.description}</CardDescription>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleQuickReport(report.type, "csv")}
+                    disabled={isGenerating}
+                    className="flex-1"
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    CSV
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleQuickReport(report.type, "pdf")}
+                    disabled={isGenerating}
+                    className="flex-1"
+                  >
+                    <FileDown className="mr-2 h-4 w-4" />
+                    PDF
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           ))}
@@ -296,8 +363,8 @@ export default function ReportsPage() {
       </div>
 
       {/* Statistics */}
-      <div>
-        <h2 className="text-xl font-semibold mb-4">Estatísticas Gerais</h2>
+      <div className="space-y-4">
+        <h2 className="text-xl font-semibold">Estatísticas Gerais</h2>
         <div className="grid gap-4 md:grid-cols-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -378,8 +445,11 @@ export default function ReportsPage() {
               <Button variant="outline" onClick={() => setIsNewReportOpen(false)}>
                 Cancelar
               </Button>
-              <Button onClick={handleCustomReport} disabled={isGenerating}>
-                {isGenerating ? "Gerando..." : "Gerar Relatório"}
+              <Button onClick={() => handleCustomReport("csv")} disabled={isGenerating}>
+                {isGenerating ? "Gerando..." : "CSV"}
+              </Button>
+              <Button onClick={() => handleCustomReport("pdf")} disabled={isGenerating}>
+                {isGenerating ? "Gerando..." : "PDF"}
               </Button>
             </div>
           </div>

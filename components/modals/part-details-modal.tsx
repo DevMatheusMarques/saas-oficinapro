@@ -1,25 +1,49 @@
 "use client"
 
-import type { Part } from "@/domain/entities/part"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Package, DollarSign, Hash, AlertTriangle, Calendar } from "lucide-react"
-import { format } from "date-fns"
-import { ptBR } from "date-fns/locale"
+import { Package, DollarSign, BarChart3, AlertTriangle } from "lucide-react"
 
 interface PartDetailsModalProps {
-  part: Part | null
   isOpen: boolean
   onClose: () => void
-  onEdit?: (part: Part) => void
+  part: any
+  category: any
 }
 
-export function PartDetailsModal({ part, isOpen, onClose, onEdit }: PartDetailsModalProps) {
+export function PartDetailsModal({ isOpen, onClose, part, category }: PartDetailsModalProps) {
   if (!part) return null
 
-  const isLowStock = part.quantity <= part.minimum_stock
+  const formatCurrency = (value: number) => {
+    if (isNaN(value) || value === null || value === undefined) {
+      return "R$ 0,00"
+    }
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format(value)
+  }
+
+  const getStockStatus = () => {
+    const quantity = part.stockQuantity || part.quantity || 0
+    const minStock = part.minStockLevel || part.minimum_stock || 0
+
+    if (quantity === 0) {
+      return <Badge variant="destructive">Sem Estoque</Badge>
+    } else if (quantity <= minStock) {
+      return <Badge variant="outline">Baixo Estoque</Badge>
+    } else {
+      return <Badge>Em Estoque</Badge>
+    }
+  }
+
+  const costPrice = part.costPrice || part.cost_price || 0
+  const salePrice = part.salePrice || part.sale_price || 0
+  const quantity = part.stockQuantity || part.quantity || 0
+  const minStock = part.minStockLevel || part.minimum_stock || 0
+
+  const profitMargin = costPrice > 0 ? ((salePrice - costPrice) / costPrice) * 100 : 0
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -27,119 +51,104 @@ export function PartDetailsModal({ part, isOpen, onClose, onEdit }: PartDetailsM
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Package className="h-5 w-5" />
-            Detalhes da Peça
+            {part.name}
           </DialogTitle>
+          <DialogDescription>Detalhes completos da peça</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6">
-          {/* Cabeçalho com nome e status */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-xl font-semibold">{part.name}</h3>
-              <p className="text-gray-600">{part.description}</p>
-            </div>
-            <div className="flex gap-2">
-              {isLowStock && (
-                <Badge variant="destructive" className="flex items-center gap-1">
-                  <AlertTriangle className="h-3 w-3" />
-                  Estoque Baixo
-                </Badge>
-              )}
-              {onEdit && (
-                <Button variant="outline" onClick={() => onEdit(part)}>
-                  Editar
-                </Button>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Informações Básicas */}
+          <div className="grid gap-4 md:grid-cols-2">
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Hash className="h-4 w-4" />
-                  Informações Básicas
-                </CardTitle>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm">Informações Básicas</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div>
-                  <p className="font-medium text-sm text-gray-600">Código</p>
-                  <p className="font-mono">{part.code}</p>
+                  <p className="text-xs text-muted-foreground">Nome</p>
+                  <p className="font-medium">{part.name}</p>
                 </div>
+                {(part.partNumber || part.code) && (
+                  <div>
+                    <p className="text-xs text-muted-foreground">Código</p>
+                    <p className="font-mono text-sm">{part.partNumber || part.code}</p>
+                  </div>
+                )}
                 <div>
-                  <p className="font-medium text-sm text-gray-600">Categoria</p>
-                  <p>{part.category}</p>
+                  <p className="text-xs text-muted-foreground">Categoria</p>
+                  <p>{category?.name || part.category || "Sem categoria"}</p>
                 </div>
-                <div>
-                  <p className="font-medium text-sm text-gray-600">Localização</p>
-                  <p>{part.location || "Não informada"}</p>
-                </div>
+                {part.description && (
+                  <div>
+                    <p className="text-xs text-muted-foreground">Descrição</p>
+                    <p className="text-sm">{part.description}</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
-            {/* Estoque */}
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Package className="h-4 w-4" />
-                  Controle de Estoque
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <BarChart3 className="h-4 w-4" />
+                  Estoque
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div>
-                  <p className="font-medium text-sm text-gray-600">Quantidade Atual</p>
-                  <p className={`text-2xl font-bold ${isLowStock ? "text-red-600" : "text-green-600"}`}>
-                    {part.quantity}
-                  </p>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">Status:</span>
+                  {getStockStatus()}
                 </div>
                 <div>
-                  <p className="font-medium text-sm text-gray-600">Estoque Mínimo</p>
-                  <p>{part.minimum_stock}</p>
+                  <p className="text-xs text-muted-foreground">Quantidade Atual</p>
+                  <p className="text-2xl font-bold">{quantity}</p>
                 </div>
                 <div>
-                  <p className="font-medium text-sm text-gray-600">Unidade</p>
-                  <p>{part.unit}</p>
+                  <p className="text-xs text-muted-foreground">Estoque Mínimo</p>
+                  <p className="text-sm">{minStock}</p>
                 </div>
+                {part.location && (
+                  <div>
+                    <p className="text-xs text-muted-foreground">Localização</p>
+                    <p className="text-sm">{part.location}</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
 
-          {/* Preços */}
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center gap-2">
                 <DollarSign className="h-4 w-4" />
-                Informações Financeiras
+                Preços e Margem
               </CardTitle>
             </CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <p className="font-medium text-sm text-gray-600">Preço de Custo</p>
-                <p className="text-lg font-semibold">
-                  {new Intl.NumberFormat("pt-BR", {
-                    style: "currency",
-                    currency: "BRL",
-                  }).format(part.cost_price)}
-                </p>
-              </div>
-              <div>
-                <p className="font-medium text-sm text-gray-600">Preço de Venda</p>
-                <p className="text-lg font-semibold text-green-600">
-                  {new Intl.NumberFormat("pt-BR", {
-                    style: "currency",
-                    currency: "BRL",
-                  }).format(part.sale_price)}
-                </p>
+            <CardContent>
+              <div className="grid gap-4 md:grid-cols-4">
+                <div>
+                  <p className="text-xs text-muted-foreground">Preço de Custo</p>
+                  <p className="text-lg font-semibold">{formatCurrency(costPrice)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Preço de Venda</p>
+                  <p className="text-lg font-semibold">{formatCurrency(salePrice)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Margem de Lucro</p>
+                  <p className="text-lg font-semibold">{profitMargin.toFixed(1)}%</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Valor em Estoque</p>
+                  <p className="text-lg font-semibold">{formatCurrency(quantity * costPrice)}</p>
+                </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Fornecedor */}
           {part.supplier && (
             <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Fornecedor</CardTitle>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm">Fornecedor</CardTitle>
               </CardHeader>
               <CardContent>
                 <p>{part.supplier}</p>
@@ -147,31 +156,21 @@ export function PartDetailsModal({ part, isOpen, onClose, onEdit }: PartDetailsM
             </Card>
           )}
 
-          {/* Datas */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Calendar className="h-4 w-4" />
-                Histórico
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <p className="font-medium text-sm text-gray-600">Criado em</p>
-                <p>{format(new Date(part.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}</p>
-              </div>
-              <div>
-                <p className="font-medium text-sm text-gray-600">Última atualização</p>
-                <p>{format(new Date(part.updated_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <div className="flex justify-end">
-            <Button variant="outline" onClick={onClose}>
-              Fechar
-            </Button>
-          </div>
+          {quantity <= minStock && (
+            <Card className="border-orange-200 bg-orange-50">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm text-orange-800 flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4" />
+                  Alerta de Estoque
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-orange-700">
+                  Esta peça está com estoque baixo. Considere fazer uma nova compra.
+                </p>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </DialogContent>
     </Dialog>
