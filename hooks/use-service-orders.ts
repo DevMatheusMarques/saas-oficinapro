@@ -26,7 +26,7 @@ export function useServiceOrders() {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to fetch service orders"
       setError(errorMessage)
-      showError("Erro", errorMessage)
+      console.error("Error fetching service orders:", err)
     } finally {
       setLoading(false)
     }
@@ -41,6 +41,7 @@ export function useServiceOrders() {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to create service order"
       showError("Erro", errorMessage)
+      console.error("Error creating service order:", err)
       return null
     }
   }
@@ -54,6 +55,7 @@ export function useServiceOrders() {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to update service order"
       showError("Erro", errorMessage)
+      console.error("Error updating service order:", err)
       return null
     }
   }
@@ -67,6 +69,7 @@ export function useServiceOrders() {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to delete service order"
       showError("Erro", errorMessage)
+      console.error("Error deleting service order:", err)
       return false
     }
   }
@@ -80,6 +83,7 @@ export function useServiceOrders() {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to start service order"
       showError("Erro", errorMessage)
+      console.error("Error starting service order:", err)
       return false
     }
   }
@@ -93,6 +97,7 @@ export function useServiceOrders() {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to complete service order"
       showError("Erro", errorMessage)
+      console.error("Error completing service order:", err)
       return false
     }
   }
@@ -106,6 +111,7 @@ export function useServiceOrders() {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to deliver service order"
       showError("Erro", errorMessage)
+      console.error("Error delivering service order:", err)
       return false
     }
   }

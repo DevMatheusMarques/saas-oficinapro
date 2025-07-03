@@ -18,10 +18,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ServiceOrderForm } from "@/components/forms/service-order-form"
 import { ServiceOrderDetailsModal } from "@/components/modals/service-order-details-modal"
 import { Pagination } from "@/components/ui/pagination"
 import { useServiceOrders } from "@/hooks/use-service-orders"
+import { useCustomers } from "@/hooks/use-customers"
+import { useMotorcycles } from "@/hooks/use-motorcycles"
 import { usePagination } from "@/hooks/use-pagination"
 import type { ServiceOrder } from "@/domain/entities/service-order"
 import { format } from "date-fns"
@@ -51,21 +54,54 @@ export default function ServiceOrdersPage() {
   const [serviceOrderToDelete, setServiceOrderToDelete] = useState<ServiceOrder | null>(null)
 
   const { success, error: showError } = useToast()
+  const { customers } = useCustomers()
+  const { motorcycles } = useMotorcycles()
   const {
     serviceOrders,
     loading,
     createServiceOrder,
     updateServiceOrder,
     deleteServiceOrder,
-    updateServiceOrderStatus,
+    startServiceOrder,
+    completeServiceOrder,
+    deliverServiceOrder,
   } = useServiceOrders()
+
+  // Helper function to safely format currency
+  const formatCurrency = (value: number | null | undefined) => {
+    if (!value || isNaN(value)) return "R$ 0,00"
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format(value)
+  }
+
+  // Helper function to get customer name
+  const getCustomerName = (customerId: string) => {
+    const customer = customers.find((c) => c.id === customerId)
+    return customer?.name || "Cliente não encontrado"
+  }
+
+  // Helper function to get motorcycle info
+  const getMotorcycleInfo = (motorcycleId: string) => {
+    const motorcycle = motorcycles.find((m) => m.id === motorcycleId)
+    if (!motorcycle) return { model: "Moto não encontrada", plate: "" }
+    return {
+      model: `${motorcycle.brand} ${motorcycle.model} (${motorcycle.year})`,
+      plate: motorcycle.plate || "",
+    }
+  }
 
   // Filter service orders
   const filteredServiceOrders = serviceOrders.filter((serviceOrder) => {
+    const customerName = getCustomerName(serviceOrder.customerId || serviceOrder.customer_id || "")
+    const motorcycleInfo = getMotorcycleInfo(serviceOrder.motorcycleId || serviceOrder.motorcycle_id || "")
+
     const matchesSearch =
-      serviceOrder.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      serviceOrder.motorcycle_model?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      serviceOrder.motorcycle_plate?.toLowerCase().includes(searchTerm.toLowerCase())
+      customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      motorcycleInfo.model.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      motorcycleInfo.plate.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      serviceOrder.description?.toLowerCase().includes(searchTerm.toLowerCase())
 
     const matchesStatus = statusFilter === "all" || serviceOrder.status === statusFilter
 
@@ -116,7 +152,23 @@ export default function ServiceOrdersPage() {
 
   const handleStatusChange = async (serviceOrderId: string, newStatus: string) => {
     try {
-      const result = await updateServiceOrderStatus(serviceOrderId, newStatus as any)
+      let result = false
+
+      switch (newStatus) {
+        case "in_progress":
+          result = await startServiceOrder(serviceOrderId)
+          break
+        case "completed":
+          result = await completeServiceOrder(serviceOrderId)
+          break
+        case "delivered":
+          result = await deliverServiceOrder(serviceOrderId)
+          break
+        default:
+          result = await updateServiceOrder(serviceOrderId, { status: newStatus as any })
+          break
+      }
+
       if (result) {
         success("Sucesso", "Status atualizado com sucesso!")
       }
@@ -138,14 +190,6 @@ export default function ServiceOrdersPage() {
   const handleEditFromDetails = (serviceOrder: ServiceOrder) => {
     setIsDetailsOpen(false)
     setIsFormOpen(true)
-  }
-
-  const formatCurrency = (value: number | null | undefined) => {
-    if (!value || isNaN(value)) return "R$ 0,00"
-    return new Intl.NumberFormat("pt-BR", {
-      style: "currency",
-      currency: "BRL",
-    }).format(value)
   }
 
   if (loading) {
@@ -220,59 +264,67 @@ export default function ServiceOrdersPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  paginatedServiceOrders.map((serviceOrder) => (
-                    <TableRow key={serviceOrder.id}>
-                      <TableCell>
-                        <div>
-                          <p className="font-medium">{serviceOrder.customer_name || "Cliente não informado"}</p>
-                          <p className="text-sm text-gray-500">{serviceOrder.customer_email || ""}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <p className="font-medium">{serviceOrder.motorcycle_model || "Modelo não informado"}</p>
-                          <p className="text-sm text-gray-500">{serviceOrder.motorcycle_plate || ""}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Select
-                          value={serviceOrder.status}
-                          onValueChange={(value) => handleStatusChange(serviceOrder.id, value)}
-                        >
-                          <SelectTrigger className="w-32">
-                            <Badge className={statusColors[serviceOrder.status as keyof typeof statusColors]}>
-                              {statusLabels[serviceOrder.status as keyof typeof statusLabels]}
-                            </Badge>
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="pending">Pendente</SelectItem>
-                            <SelectItem value="in_progress">Em Andamento</SelectItem>
-                            <SelectItem value="completed">Concluída</SelectItem>
-                            <SelectItem value="cancelled">Cancelada</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                      <TableCell>
-                        {serviceOrder.created_at
-                          ? format(new Date(serviceOrder.created_at), "dd/MM/yyyy", { locale: ptBR })
-                          : "Data não informada"}
-                      </TableCell>
-                      <TableCell>{formatCurrency(serviceOrder.total_amount)}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <Button variant="ghost" size="sm" onClick={() => handleViewDetails(serviceOrder)}>
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => handleEditServiceOrder(serviceOrder)}>
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => setServiceOrderToDelete(serviceOrder)}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                  paginatedServiceOrders.map((serviceOrder) => {
+                    const customerName = getCustomerName(serviceOrder.customerId || serviceOrder.customer_id || "")
+                    const motorcycleInfo = getMotorcycleInfo(
+                      serviceOrder.motorcycleId || serviceOrder.motorcycle_id || "",
+                    )
+
+                    return (
+                      <TableRow key={serviceOrder.id}>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">{customerName}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">{motorcycleInfo.model}</p>
+                            <p className="text-sm text-gray-500">{motorcycleInfo.plate}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Select
+                            value={serviceOrder.status}
+                            onValueChange={(value) => handleStatusChange(serviceOrder.id, value)}
+                          >
+                            <SelectTrigger className="w-32">
+                              <Badge className={statusColors[serviceOrder.status as keyof typeof statusColors]}>
+                                {statusLabels[serviceOrder.status as keyof typeof statusLabels]}
+                              </Badge>
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="pending">Pendente</SelectItem>
+                              <SelectItem value="in_progress">Em Andamento</SelectItem>
+                              <SelectItem value="completed">Concluída</SelectItem>
+                              <SelectItem value="cancelled">Cancelada</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell>
+                          {serviceOrder.created_at || serviceOrder.createdAt
+                            ? format(new Date(serviceOrder.created_at || serviceOrder.createdAt), "dd/MM/yyyy", {
+                                locale: ptBR,
+                              })
+                            : "Data não informada"}
+                        </TableCell>
+                        <TableCell>{formatCurrency(serviceOrder.total_amount || serviceOrder.totalAmount)}</TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <Button variant="ghost" size="sm" onClick={() => handleViewDetails(serviceOrder)}>
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => handleEditServiceOrder(serviceOrder)}>
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => setServiceOrderToDelete(serviceOrder)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })
                 )}
               </TableBody>
             </Table>
@@ -292,16 +344,31 @@ export default function ServiceOrdersPage() {
         </CardContent>
       </Card>
 
-      <ServiceOrderForm
-        serviceOrder={selectedServiceOrder}
-        isOpen={isFormOpen}
-        onClose={() => {
-          setIsFormOpen(false)
-          setSelectedServiceOrder(null)
-        }}
-        onSubmit={selectedServiceOrder ? handleUpdateServiceOrder : handleCreateServiceOrder}
-      />
+      {/* Service Order Form Dialog */}
+      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{selectedServiceOrder ? "Editar" : "Nova"} Ordem de Serviço</DialogTitle>
+            <DialogDescription>
+              {selectedServiceOrder
+                ? "Edite os dados da ordem de serviço"
+                : "Preencha os dados para criar uma nova ordem de serviço"}
+            </DialogDescription>
+          </DialogHeader>
+          <ServiceOrderForm
+            customers={customers}
+            motorcycles={motorcycles}
+            initialData={selectedServiceOrder}
+            onSubmit={selectedServiceOrder ? handleUpdateServiceOrder : handleCreateServiceOrder}
+            onCancel={() => {
+              setIsFormOpen(false)
+              setSelectedServiceOrder(null)
+            }}
+          />
+        </DialogContent>
+      </Dialog>
 
+      {/* Service Order Details Modal */}
       <ServiceOrderDetailsModal
         serviceOrder={selectedServiceOrder}
         isOpen={isDetailsOpen}
@@ -312,6 +379,7 @@ export default function ServiceOrdersPage() {
         onEdit={handleEditFromDetails}
       />
 
+      {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!serviceOrderToDelete} onOpenChange={() => setServiceOrderToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
