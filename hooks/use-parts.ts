@@ -1,9 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import type { Part, CreatePartData } from "@/domain/entities/part"
-import { PartUseCases } from "@/domain/use-cases/part-use-cases"
-import { SupabasePartRepository } from "@/infrastructure/repositories/supabase-part-repository"
+import type { Part } from "@/domain/entities/part"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/contexts/toast-context"
 
@@ -20,18 +18,48 @@ export function useParts() {
   const { success, error: showError } = useToast()
 
   const supabase = createClient()
-  const partRepository = new SupabasePartRepository(supabase)
-  const partUseCases = new PartUseCases(partRepository)
 
   const fetchParts = async () => {
     try {
       setLoading(true)
       setError(null)
-      const data = await partUseCases.getAllParts()
-      setParts(data)
+
+      // Buscar peças
+      const { data: partsData, error: partsError } = await supabase.from("parts").select("*").order("name")
+
+      if (partsError) {
+        throw new Error(`Failed to fetch parts: ${partsError.message}`)
+      }
+
+      // Mapear os dados corretamente
+      const mappedParts: Part[] = (partsData || []).map((data: any) => ({
+        id: data.id,
+        categoryId: data.category_id,
+        name: data.name,
+        description: data.description,
+        partNumber: data.part_number,
+        code: data.part_number || data.code,
+        brand: data.brand,
+        costPrice: Number.parseFloat(data.cost_price) || 0,
+        cost_price: Number.parseFloat(data.cost_price) || 0,
+        salePrice: Number.parseFloat(data.sale_price) || 0,
+        sale_price: Number.parseFloat(data.sale_price) || 0,
+        stockQuantity: data.stock_quantity || 0,
+        quantity: data.stock_quantity || 0,
+        minStockLevel: data.min_stock_level || 0,
+        minimum_stock: data.min_stock_level || 0,
+        location: data.location,
+        unit: data.unit || "un",
+        category: data.category || "Sem categoria",
+        supplier: data.supplier,
+        createdAt: new Date(data.created_at),
+        updatedAt: new Date(data.updated_at),
+      }))
+
+      setParts(mappedParts)
 
       // Extract unique categories
-      const uniqueCategories = Array.from(new Set(data.map((part) => part.category).filter(Boolean))).map(
+      const uniqueCategories = Array.from(new Set(mappedParts.map((part) => part.category).filter(Boolean))).map(
         (name, index) => ({
           id: `cat-${index}`,
           name: name as string,
@@ -47,12 +75,55 @@ export function useParts() {
     }
   }
 
-  const createPart = async (data: CreatePartData): Promise<Part | null> => {
+  const createPart = async (data: any): Promise<Part | null> => {
     try {
-      const part = await partUseCases.createPart(data)
-      setParts((prev) => [part, ...prev])
+      const { data: result, error } = await supabase
+        .from("parts")
+        .insert({
+          name: data.name,
+          description: data.description,
+          part_number: data.code,
+          category: data.category,
+          stock_quantity: data.quantity,
+          min_stock_level: data.minimum_stock,
+          unit: data.unit,
+          cost_price: data.cost_price,
+          sale_price: data.sale_price,
+          supplier: data.supplier,
+          location: data.location,
+        })
+        .select()
+        .single()
+
+      if (error) {
+        throw new Error(`Failed to create part: ${error.message}`)
+      }
+
+      const newPart: Part = {
+        id: result.id,
+        name: result.name,
+        description: result.description,
+        code: result.part_number,
+        partNumber: result.part_number,
+        category: result.category,
+        quantity: result.stock_quantity,
+        stockQuantity: result.stock_quantity,
+        minimum_stock: result.min_stock_level,
+        minStockLevel: result.min_stock_level,
+        unit: result.unit,
+        cost_price: result.cost_price,
+        costPrice: result.cost_price,
+        sale_price: result.sale_price,
+        salePrice: result.sale_price,
+        supplier: result.supplier,
+        location: result.location,
+        createdAt: new Date(result.created_at),
+        updatedAt: new Date(result.updated_at),
+      }
+
+      setParts((prev) => [newPart, ...prev])
       success("Sucesso", "Peça criada com sucesso!")
-      return part
+      return newPart
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to create part"
       showError("Erro", errorMessage)
@@ -61,12 +132,57 @@ export function useParts() {
     }
   }
 
-  const updatePart = async (id: string, data: Partial<Part>): Promise<Part | null> => {
+  const updatePart = async (id: string, data: any): Promise<Part | null> => {
     try {
-      const part = await partUseCases.updatePart(id, data)
-      setParts((prev) => prev.map((p) => (p.id === part.id ? part : p)))
+      const { data: result, error } = await supabase
+        .from("parts")
+        .update({
+          name: data.name,
+          description: data.description,
+          part_number: data.code,
+          category: data.category,
+          stock_quantity: data.quantity,
+          min_stock_level: data.minimum_stock,
+          unit: data.unit,
+          cost_price: data.cost_price,
+          sale_price: data.sale_price,
+          supplier: data.supplier,
+          location: data.location,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id)
+        .select()
+        .single()
+
+      if (error) {
+        throw new Error(`Failed to update part: ${error.message}`)
+      }
+
+      const updatedPart: Part = {
+        id: result.id,
+        name: result.name,
+        description: result.description,
+        code: result.part_number,
+        partNumber: result.part_number,
+        category: result.category,
+        quantity: result.stock_quantity,
+        stockQuantity: result.stock_quantity,
+        minimum_stock: result.min_stock_level,
+        minStockLevel: result.min_stock_level,
+        unit: result.unit,
+        cost_price: result.cost_price,
+        costPrice: result.cost_price,
+        sale_price: result.sale_price,
+        salePrice: result.sale_price,
+        supplier: result.supplier,
+        location: result.location,
+        createdAt: new Date(result.created_at),
+        updatedAt: new Date(result.updated_at),
+      }
+
+      setParts((prev) => prev.map((p) => (p.id === updatedPart.id ? updatedPart : p)))
       success("Sucesso", "Peça atualizada com sucesso!")
-      return part
+      return updatedPart
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to update part"
       showError("Erro", errorMessage)
@@ -77,7 +193,12 @@ export function useParts() {
 
   const deletePart = async (id: string): Promise<boolean> => {
     try {
-      await partUseCases.deletePart(id)
+      const { error } = await supabase.from("parts").delete().eq("id", id)
+
+      if (error) {
+        throw new Error(`Failed to delete part: ${error.message}`)
+      }
+
       setParts((prev) => prev.filter((p) => p.id !== id))
       success("Sucesso", "Peça excluída com sucesso!")
       return true
@@ -91,8 +212,21 @@ export function useParts() {
 
   const updatePartStock = async (id: string, newQuantity: number): Promise<boolean> => {
     try {
-      await partUseCases.updatePart(id, { quantity: newQuantity })
-      setParts((prev) => prev.map((p) => (p.id === id ? { ...p, quantity: newQuantity } : p)))
+      const { error } = await supabase
+        .from("parts")
+        .update({
+          stock_quantity: newQuantity,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id)
+
+      if (error) {
+        throw new Error(`Failed to update stock: ${error.message}`)
+      }
+
+      setParts((prev) =>
+        prev.map((p) => (p.id === id ? { ...p, quantity: newQuantity, stockQuantity: newQuantity } : p)),
+      )
       return true
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to update stock"

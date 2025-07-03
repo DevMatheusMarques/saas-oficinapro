@@ -1,12 +1,11 @@
 "use client"
+
 import type { ServiceOrder } from "@/domain/entities/service-order"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Calendar, User, Wrench, DollarSign, FileText } from "lucide-react"
-import { format } from "date-fns"
-import { ptBR } from "date-fns/locale"
 
 interface ServiceOrderDetailsModalProps {
   serviceOrder: ServiceOrder | null
@@ -32,13 +31,31 @@ const statusLabels = {
 export function ServiceOrderDetailsModal({ serviceOrder, isOpen, onClose, onEdit }: ServiceOrderDetailsModalProps) {
   if (!serviceOrder) return null
 
+  const formatCurrency = (value: number | null | undefined) => {
+    if (!value || isNaN(value)) return "R$ 0,00"
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format(value)
+  }
+
+  const formatDate = (date: Date | string | null | undefined) => {
+    if (!date) return "Não informado"
+    try {
+      const dateObj = typeof date === "string" ? new Date(date) : date
+      return dateObj.toLocaleDateString("pt-BR")
+    } catch {
+      return "Data inválida"
+    }
+  }
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Wrench className="h-5 w-5" />
-            Ordem de Serviço #{serviceOrder.id}
+            Ordem de Serviço #{serviceOrder.orderNumber || serviceOrder.id}
           </DialogTitle>
         </DialogHeader>
 
@@ -69,13 +86,7 @@ export function ServiceOrderDetailsModal({ serviceOrder, isOpen, onClose, onEdit
               </CardHeader>
               <CardContent className="space-y-2">
                 <p>
-                  <strong>Nome:</strong> {serviceOrder.customer_name}
-                </p>
-                <p>
-                  <strong>Email:</strong> {serviceOrder.customer_email}
-                </p>
-                <p>
-                  <strong>Telefone:</strong> {serviceOrder.customer_phone}
+                  <strong>ID:</strong> {serviceOrder.customerId}
                 </p>
               </CardContent>
             </Card>
@@ -90,13 +101,7 @@ export function ServiceOrderDetailsModal({ serviceOrder, isOpen, onClose, onEdit
               </CardHeader>
               <CardContent className="space-y-2">
                 <p>
-                  <strong>Modelo:</strong> {serviceOrder.motorcycle_model}
-                </p>
-                <p>
-                  <strong>Ano:</strong> {serviceOrder.motorcycle_year}
-                </p>
-                <p>
-                  <strong>Placa:</strong> {serviceOrder.motorcycle_plate}
+                  <strong>ID:</strong> {serviceOrder.motorcycleId}
                 </p>
               </CardContent>
             </Card>
@@ -113,18 +118,24 @@ export function ServiceOrderDetailsModal({ serviceOrder, isOpen, onClose, onEdit
             <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <p className="font-medium text-sm text-gray-600">Data de Criação</p>
-                <p>{format(new Date(serviceOrder.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}</p>
+                <p>{formatDate(serviceOrder.createdAt)}</p>
               </div>
-              {serviceOrder.scheduled_date && (
+              {serviceOrder.startDate && (
                 <div>
-                  <p className="font-medium text-sm text-gray-600">Data Agendada</p>
-                  <p>{format(new Date(serviceOrder.scheduled_date), "dd/MM/yyyy", { locale: ptBR })}</p>
+                  <p className="font-medium text-sm text-gray-600">Data de Início</p>
+                  <p>{formatDate(serviceOrder.startDate)}</p>
                 </div>
               )}
-              {serviceOrder.completed_at && (
+              {serviceOrder.estimatedCompletion && (
+                <div>
+                  <p className="font-medium text-sm text-gray-600">Previsão de Conclusão</p>
+                  <p>{formatDate(serviceOrder.estimatedCompletion)}</p>
+                </div>
+              )}
+              {serviceOrder.completionDate && (
                 <div>
                   <p className="font-medium text-sm text-gray-600">Data de Conclusão</p>
-                  <p>{format(new Date(serviceOrder.completed_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}</p>
+                  <p>{formatDate(serviceOrder.completionDate)}</p>
                 </div>
               )}
             </CardContent>
@@ -139,7 +150,7 @@ export function ServiceOrderDetailsModal({ serviceOrder, isOpen, onClose, onEdit
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="whitespace-pre-wrap">{serviceOrder.description}</p>
+              <p className="whitespace-pre-wrap">{serviceOrder.description || "Nenhuma descrição fornecida"}</p>
             </CardContent>
           </Card>
 
@@ -167,12 +178,7 @@ export function ServiceOrderDetailsModal({ serviceOrder, isOpen, onClose, onEdit
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold text-green-600">
-                {new Intl.NumberFormat("pt-BR", {
-                  style: "currency",
-                  currency: "BRL",
-                }).format(serviceOrder.total_amount)}
-              </p>
+              <p className="text-2xl font-bold text-green-600">{formatCurrency(serviceOrder.totalAmount)}</p>
             </CardContent>
           </Card>
         </div>

@@ -51,14 +51,14 @@ PaginationLink.displayName = "PaginationLink"
 const PaginationPrevious = ({ className, ...props }: React.ComponentProps<typeof PaginationLink>) => (
   <PaginationLink aria-label="Go to previous page" size="default" className={cn("gap-1 pl-2.5", className)} {...props}>
     <ChevronLeft className="h-4 w-4" />
-    <span>Anterior</span>
+    <span>Previous</span>
   </PaginationLink>
 )
 PaginationPrevious.displayName = "PaginationPrevious"
 
 const PaginationNext = ({ className, ...props }: React.ComponentProps<typeof PaginationLink>) => (
   <PaginationLink aria-label="Go to next page" size="default" className={cn("gap-1 pr-2.5", className)} {...props}>
-    <span>Próximo</span>
+    <span>Next</span>
     <ChevronRight className="h-4 w-4" />
   </PaginationLink>
 )
@@ -72,6 +72,56 @@ const PaginationEllipsis = ({ className, ...props }: React.ComponentProps<"span"
 )
 PaginationEllipsis.displayName = "PaginationEllipsis"
 
+// Custom Pagination component that accepts props
+interface CustomPaginationProps {
+  currentPage: number
+  totalPages: number
+  onPageChange: (page: number) => void
+  onPreviousPage: () => void
+  onNextPage: () => void
+}
+
+const CustomPagination = ({
+  currentPage,
+  totalPages,
+  onPageChange,
+  onPreviousPage,
+  onNextPage,
+}: CustomPaginationProps) => {
+  const hasPreviousPage = currentPage > 1
+  const hasNextPage = currentPage < totalPages
+
+  return (
+    <Pagination>
+      <PaginationContent>
+        <PaginationItem>
+          <PaginationPrevious
+            onClick={onPreviousPage}
+            className={!hasPreviousPage ? "pointer-events-none opacity-50" : "cursor-pointer"}
+          />
+        </PaginationItem>
+        {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+          <PaginationItem key={page}>
+            <PaginationLink
+              onClick={() => onPageChange(page)}
+              isActive={currentPage === page}
+              className="cursor-pointer"
+            >
+              {page}
+            </PaginationLink>
+          </PaginationItem>
+        ))}
+        <PaginationItem>
+          <PaginationNext
+            onClick={onNextPage}
+            className={!hasNextPage ? "pointer-events-none opacity-50" : "cursor-pointer"}
+          />
+        </PaginationItem>
+      </PaginationContent>
+    </Pagination>
+  )
+}
+
 export {
   Pagination,
   PaginationContent,
@@ -80,4 +130,5 @@ export {
   PaginationLink,
   PaginationNext,
   PaginationPrevious,
+  CustomPagination as default,
 }

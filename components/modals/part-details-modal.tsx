@@ -1,176 +1,224 @@
 "use client"
 
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import type { Part } from "@/domain/entities/part"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Package, DollarSign, BarChart3, AlertTriangle } from "lucide-react"
+import { Package, DollarSign, AlertTriangle, MapPin, Calendar } from "lucide-react"
 
 interface PartDetailsModalProps {
+  part: Part | null
   isOpen: boolean
   onClose: () => void
-  part: any
-  category: any
+  onEdit?: (part: Part) => void
 }
 
-export function PartDetailsModal({ isOpen, onClose, part, category }: PartDetailsModalProps) {
+export function PartDetailsModal({ part, isOpen, onClose, onEdit }: PartDetailsModalProps) {
   if (!part) return null
 
-  const formatCurrency = (value: number) => {
-    if (isNaN(value) || value === null || value === undefined) {
-      return "R$ 0,00"
-    }
+  const formatCurrency = (value: number | null | undefined) => {
+    if (!value || isNaN(value)) return "R$ 0,00"
     return new Intl.NumberFormat("pt-BR", {
       style: "currency",
       currency: "BRL",
     }).format(value)
   }
 
-  const getStockStatus = () => {
-    const quantity = part.stockQuantity || part.quantity || 0
-    const minStock = part.minStockLevel || part.minimum_stock || 0
-
-    if (quantity === 0) {
-      return <Badge variant="destructive">Sem Estoque</Badge>
-    } else if (quantity <= minStock) {
-      return <Badge variant="outline">Baixo Estoque</Badge>
-    } else {
-      return <Badge>Em Estoque</Badge>
+  const formatDate = (date: Date | string | null | undefined) => {
+    if (!date) return "Não informado"
+    try {
+      const dateObj = typeof date === "string" ? new Date(date) : date
+      return dateObj.toLocaleDateString("pt-BR")
+    } catch {
+      return "Data inválida"
     }
   }
 
-  const costPrice = part.costPrice || part.cost_price || 0
-  const salePrice = part.salePrice || part.sale_price || 0
-  const quantity = part.stockQuantity || part.quantity || 0
-  const minStock = part.minStockLevel || part.minimum_stock || 0
+  const getNumericValue = (value: any): number => {
+    if (value === null || value === undefined || isNaN(Number(value))) {
+      return 0
+    }
+    return Number(value)
+  }
 
-  const profitMargin = costPrice > 0 ? ((salePrice - costPrice) / costPrice) * 100 : 0
+  const quantity = getNumericValue(part.quantity || part.stockQuantity)
+  const minStock = getNumericValue(part.minimum_stock || part.minStockLevel)
+  const costPrice = getNumericValue(part.cost_price || part.costPrice)
+  const salePrice = getNumericValue(part.sale_price || part.salePrice)
+
+  const isLowStock = quantity <= minStock && quantity > 0
+  const isOutOfStock = quantity === 0
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Package className="h-5 w-5" />
             {part.name}
           </DialogTitle>
-          <DialogDescription>Detalhes completos da peça</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-2">
+          {/* Status e Informações Básicas */}
+          <div className="flex items-center justify-between">
+            <div className="flex gap-2">
+              {isOutOfStock && <Badge variant="destructive">Sem estoque</Badge>}
+              {isLowStock && !isOutOfStock && (
+                <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
+                  Estoque baixo
+                </Badge>
+              )}
+              {!isLowStock && !isOutOfStock && (
+                <Badge variant="default" className="bg-green-100 text-green-800">
+                  Em estoque
+                </Badge>
+              )}
+            </div>
+            <div className="flex gap-2">
+              {onEdit && (
+                <Button variant="outline" onClick={() => onEdit(part)}>
+                  Editar
+                </Button>
+              )}
+              <Button variant="outline" onClick={onClose}>
+                Fechar
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Informações Básicas */}
             <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm">Informações Básicas</CardTitle>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Package className="h-4 w-4" />
+                  Informações Básicas
+                </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <div>
-                  <p className="text-xs text-muted-foreground">Nome</p>
-                  <p className="font-medium">{part.name}</p>
-                </div>
-                {(part.partNumber || part.code) && (
-                  <div>
-                    <p className="text-xs text-muted-foreground">Código</p>
-                    <p className="font-mono text-sm">{part.partNumber || part.code}</p>
-                  </div>
-                )}
-                <div>
-                  <p className="text-xs text-muted-foreground">Categoria</p>
-                  <p>{category?.name || part.category || "Sem categoria"}</p>
-                </div>
+              <CardContent className="space-y-2">
+                <p>
+                  <strong>Nome:</strong> {part.name}
+                </p>
+                <p>
+                  <strong>Código:</strong> {part.code || part.partNumber || "N/A"}
+                </p>
+                <p>
+                  <strong>Categoria:</strong> {part.category || "Sem categoria"}
+                </p>
+                <p>
+                  <strong>Marca:</strong> {part.brand || "Não informado"}
+                </p>
                 {part.description && (
-                  <div>
-                    <p className="text-xs text-muted-foreground">Descrição</p>
-                    <p className="text-sm">{part.description}</p>
-                  </div>
+                  <p>
+                    <strong>Descrição:</strong> {part.description}
+                  </p>
                 )}
               </CardContent>
             </Card>
 
+            {/* Estoque */}
             <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <BarChart3 className="h-4 w-4" />
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <AlertTriangle className="h-4 w-4" />
                   Estoque
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">Status:</span>
-                  {getStockStatus()}
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Quantidade Atual</p>
-                  <p className="text-2xl font-bold">{quantity}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Estoque Mínimo</p>
-                  <p className="text-sm">{minStock}</p>
-                </div>
-                {part.location && (
-                  <div>
-                    <p className="text-xs text-muted-foreground">Localização</p>
-                    <p className="text-sm">{part.location}</p>
-                  </div>
-                )}
+              <CardContent className="space-y-2">
+                <p>
+                  <strong>Quantidade atual:</strong>{" "}
+                  <span
+                    className={`font-medium ${
+                      isOutOfStock ? "text-red-600" : isLowStock ? "text-yellow-600" : "text-green-600"
+                    }`}
+                  >
+                    {quantity} {part.unit || "un"}
+                  </span>
+                </p>
+                <p>
+                  <strong>Estoque mínimo:</strong> {minStock} {part.unit || "un"}
+                </p>
+                <p>
+                  <strong>Unidade:</strong> {part.unit || "un"}
+                </p>
               </CardContent>
             </Card>
           </div>
 
+          {/* Preços */}
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm flex items-center gap-2">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
                 <DollarSign className="h-4 w-4" />
-                Preços e Margem
+                Preços
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 md:grid-cols-4">
-                <div>
-                  <p className="text-xs text-muted-foreground">Preço de Custo</p>
-                  <p className="text-lg font-semibold">{formatCurrency(costPrice)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Preço de Venda</p>
-                  <p className="text-lg font-semibold">{formatCurrency(salePrice)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Margem de Lucro</p>
-                  <p className="text-lg font-semibold">{profitMargin.toFixed(1)}%</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Valor em Estoque</p>
-                  <p className="text-lg font-semibold">{formatCurrency(quantity * costPrice)}</p>
-                </div>
+            <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <p className="font-medium text-sm text-gray-600">Preço de Custo</p>
+                <p className="text-lg font-bold">{formatCurrency(costPrice)}</p>
+              </div>
+              <div>
+                <p className="font-medium text-sm text-gray-600">Preço de Venda</p>
+                <p className="text-lg font-bold text-green-600">{formatCurrency(salePrice)}</p>
+              </div>
+              <div>
+                <p className="font-medium text-sm text-gray-600">Margem</p>
+                <p className="text-lg font-bold">
+                  {costPrice > 0 ? `${(((salePrice - costPrice) / costPrice) * 100).toFixed(1)}%` : "N/A"}
+                </p>
               </div>
             </CardContent>
           </Card>
 
-          {part.supplier && (
+          {/* Localização e Fornecedor */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm">Fornecedor</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p>{part.supplier}</p>
-              </CardContent>
-            </Card>
-          )}
-
-          {quantity <= minStock && (
-            <Card className="border-orange-200 bg-orange-50">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm text-orange-800 flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4" />
-                  Alerta de Estoque
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <MapPin className="h-4 w-4" />
+                  Localização
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-sm text-orange-700">
-                  Esta peça está com estoque baixo. Considere fazer uma nova compra.
-                </p>
+                <p>{part.location || "Não informado"}</p>
               </CardContent>
             </Card>
-          )}
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Package className="h-4 w-4" />
+                  Fornecedor
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p>{part.supplier || "Não informado"}</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Datas */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Calendar className="h-4 w-4" />
+                Histórico
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <p className="font-medium text-sm text-gray-600">Data de Criação</p>
+                <p>{formatDate(part.createdAt)}</p>
+              </div>
+              <div>
+                <p className="font-medium text-sm text-gray-600">Última Atualização</p>
+                <p>{formatDate(part.updatedAt)}</p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </DialogContent>
     </Dialog>

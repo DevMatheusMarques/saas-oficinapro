@@ -1,9 +1,8 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect } from "react"
-import { useForm } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { z } from "zod"
 import type { Part } from "@/domain/entities/part"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -11,29 +10,12 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useToast } from "@/hooks/use-toast"
-
-const partSchema = z.object({
-  name: z.string().min(1, "Nome é obrigatório"),
-  description: z.string().optional(),
-  code: z.string().min(1, "Código é obrigatório"),
-  category: z.string().min(1, "Categoria é obrigatória"),
-  quantity: z.number().min(0, "Quantidade deve ser maior ou igual a 0"),
-  minimum_stock: z.number().min(0, "Estoque mínimo deve ser maior ou igual a 0"),
-  unit: z.string().min(1, "Unidade é obrigatória"),
-  cost_price: z.number().min(0, "Preço de custo deve ser maior ou igual a 0"),
-  sale_price: z.number().min(0, "Preço de venda deve ser maior ou igual a 0"),
-  supplier: z.string().optional(),
-  location: z.string().optional(),
-})
-
-type PartFormData = z.infer<typeof partSchema>
 
 interface PartFormProps {
   part?: Part | null
   isOpen: boolean
   onClose: () => void
-  onSubmit: (data: PartFormData) => Promise<void>
+  onSubmit: (data: any) => Promise<void>
 }
 
 const categories = [
@@ -53,52 +35,37 @@ const units = ["UN", "PC", "KG", "L", "M", "M²", "M³", "CX", "PCT", "PAR"]
 
 export function PartForm({ part, isOpen, onClose, onSubmit }: PartFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const { toast } = useToast()
-
-  const {
-    register,
-    handleSubmit,
-    reset,
-    setValue,
-    watch,
-    formState: { errors },
-  } = useForm<PartFormData>({
-    resolver: zodResolver(partSchema),
-    defaultValues: {
-      name: "",
-      description: "",
-      code: "",
-      category: "",
-      quantity: 0,
-      minimum_stock: 0,
-      unit: "UN",
-      cost_price: 0,
-      sale_price: 0,
-      supplier: "",
-      location: "",
-    },
+  const [formData, setFormData] = useState({
+    name: "",
+    description: "",
+    code: "",
+    category: "",
+    quantity: 0,
+    minimum_stock: 0,
+    unit: "UN",
+    cost_price: 0,
+    sale_price: 0,
+    supplier: "",
+    location: "",
   })
-
-  const selectedCategory = watch("category")
-  const selectedUnit = watch("unit")
 
   useEffect(() => {
     if (part) {
-      reset({
-        name: part.name,
+      setFormData({
+        name: part.name || "",
         description: part.description || "",
-        code: part.code,
-        category: part.category,
-        quantity: part.quantity,
-        minimum_stock: part.minimum_stock,
-        unit: part.unit,
-        cost_price: part.cost_price,
-        sale_price: part.sale_price,
+        code: part.code || part.partNumber || "",
+        category: part.category || "",
+        quantity: part.quantity || part.stockQuantity || 0,
+        minimum_stock: part.minimum_stock || part.minStockLevel || 0,
+        unit: part.unit || "UN",
+        cost_price: part.cost_price || part.costPrice || 0,
+        sale_price: part.sale_price || part.salePrice || 0,
         supplier: part.supplier || "",
         location: part.location || "",
       })
     } else {
-      reset({
+      setFormData({
         name: "",
         description: "",
         code: "",
@@ -112,26 +79,26 @@ export function PartForm({ part, isOpen, onClose, onSubmit }: PartFormProps) {
         location: "",
       })
     }
-  }, [part, reset])
+  }, [part, isOpen])
 
-  const handleFormSubmit = async (data: PartFormData) => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
     setIsSubmitting(true)
+
     try {
-      await onSubmit(data)
-      toast({
-        title: "Sucesso",
-        description: part ? "Peça atualizada com sucesso!" : "Peça criada com sucesso!",
-      })
-      onClose()
+      await onSubmit(formData)
     } catch (error) {
-      toast({
-        title: "Erro",
-        description: "Ocorreu um erro ao salvar a peça.",
-        variant: "destructive",
-      })
+      console.error("Error submitting form:", error)
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  const handleInputChange = (field: string, value: any) => {
+    setFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }))
   }
 
   return (
@@ -141,30 +108,46 @@ export function PartForm({ part, isOpen, onClose, onSubmit }: PartFormProps) {
           <DialogTitle>{part ? "Editar Peça" : "Nova Peça"}</DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="name">Nome *</Label>
-              <Input id="name" {...register("name")} placeholder="Nome da peça" />
-              {errors.name && <p className="text-sm text-red-600">{errors.name.message}</p>}
+              <Input
+                id="name"
+                value={formData.name}
+                onChange={(e) => handleInputChange("name", e.target.value)}
+                placeholder="Nome da peça"
+                required
+              />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="code">Código *</Label>
-              <Input id="code" {...register("code")} placeholder="Código da peça" />
-              {errors.code && <p className="text-sm text-red-600">{errors.code.message}</p>}
+              <Input
+                id="code"
+                value={formData.code}
+                onChange={(e) => handleInputChange("code", e.target.value)}
+                placeholder="Código da peça"
+                required
+              />
             </div>
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="description">Descrição</Label>
-            <Textarea id="description" {...register("description")} placeholder="Descrição da peça" rows={3} />
+            <Textarea
+              id="description"
+              value={formData.description}
+              onChange={(e) => handleInputChange("description", e.target.value)}
+              placeholder="Descrição da peça"
+              rows={3}
+            />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Categoria *</Label>
-              <Select value={selectedCategory} onValueChange={(value) => setValue("category", value)}>
+              <Select value={formData.category} onValueChange={(value) => handleInputChange("category", value)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione a categoria" />
                 </SelectTrigger>
@@ -176,12 +159,11 @@ export function PartForm({ part, isOpen, onClose, onSubmit }: PartFormProps) {
                   ))}
                 </SelectContent>
               </Select>
-              {errors.category && <p className="text-sm text-red-600">{errors.category.message}</p>}
             </div>
 
             <div className="space-y-2">
               <Label>Unidade *</Label>
-              <Select value={selectedUnit} onValueChange={(value) => setValue("unit", value)}>
+              <Select value={formData.unit} onValueChange={(value) => handleInputChange("unit", value)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione a unidade" />
                 </SelectTrigger>
@@ -193,15 +175,21 @@ export function PartForm({ part, isOpen, onClose, onSubmit }: PartFormProps) {
                   ))}
                 </SelectContent>
               </Select>
-              {errors.unit && <p className="text-sm text-red-600">{errors.unit.message}</p>}
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="quantity">Quantidade *</Label>
-              <Input id="quantity" type="number" min="0" step="1" {...register("quantity", { valueAsNumber: true })} />
-              {errors.quantity && <p className="text-sm text-red-600">{errors.quantity.message}</p>}
+              <Input
+                id="quantity"
+                type="number"
+                min="0"
+                step="1"
+                value={formData.quantity}
+                onChange={(e) => handleInputChange("quantity", Number(e.target.value))}
+                required
+              />
             </div>
 
             <div className="space-y-2">
@@ -211,9 +199,10 @@ export function PartForm({ part, isOpen, onClose, onSubmit }: PartFormProps) {
                 type="number"
                 min="0"
                 step="1"
-                {...register("minimum_stock", { valueAsNumber: true })}
+                value={formData.minimum_stock}
+                onChange={(e) => handleInputChange("minimum_stock", Number(e.target.value))}
+                required
               />
-              {errors.minimum_stock && <p className="text-sm text-red-600">{errors.minimum_stock.message}</p>}
             </div>
           </div>
 
@@ -225,9 +214,10 @@ export function PartForm({ part, isOpen, onClose, onSubmit }: PartFormProps) {
                 type="number"
                 min="0"
                 step="0.01"
-                {...register("cost_price", { valueAsNumber: true })}
+                value={formData.cost_price}
+                onChange={(e) => handleInputChange("cost_price", Number(e.target.value))}
+                required
               />
-              {errors.cost_price && <p className="text-sm text-red-600">{errors.cost_price.message}</p>}
             </div>
 
             <div className="space-y-2">
@@ -237,21 +227,32 @@ export function PartForm({ part, isOpen, onClose, onSubmit }: PartFormProps) {
                 type="number"
                 min="0"
                 step="0.01"
-                {...register("sale_price", { valueAsNumber: true })}
+                value={formData.sale_price}
+                onChange={(e) => handleInputChange("sale_price", Number(e.target.value))}
+                required
               />
-              {errors.sale_price && <p className="text-sm text-red-600">{errors.sale_price.message}</p>}
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="supplier">Fornecedor</Label>
-              <Input id="supplier" {...register("supplier")} placeholder="Nome do fornecedor" />
+              <Input
+                id="supplier"
+                value={formData.supplier}
+                onChange={(e) => handleInputChange("supplier", e.target.value)}
+                placeholder="Nome do fornecedor"
+              />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="location">Localização</Label>
-              <Input id="location" {...register("location")} placeholder="Ex: Prateleira A1" />
+              <Input
+                id="location"
+                value={formData.location}
+                onChange={(e) => handleInputChange("location", e.target.value)}
+                placeholder="Ex: Prateleira A1"
+              />
             </div>
           </div>
 

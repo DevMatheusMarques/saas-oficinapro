@@ -1,99 +1,77 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect } from "react"
-import { useForm } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { z } from "zod"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useToast } from "@/hooks/use-toast"
 import { useParts } from "@/hooks/use-parts"
-
-const stockEntrySchema = z.object({
-  part_id: z.string().min(1, "Peça é obrigatória"),
-  quantity: z.number().min(1, "Quantidade deve ser maior que 0"),
-  type: z.enum(["entry", "exit"], { required_error: "Tipo é obrigatório" }),
-  reason: z.string().min(1, "Motivo é obrigatório"),
-  notes: z.string().optional(),
-})
-
-type StockEntryFormData = z.infer<typeof stockEntrySchema>
 
 interface StockEntryFormProps {
   isOpen: boolean
   onClose: () => void
-  onSubmit: (data: StockEntryFormData) => Promise<void>
+  onSubmit: (data: any) => Promise<void>
   preSelectedPartId?: string
 }
 
 const entryReasons = ["Compra", "Devolução", "Ajuste de inventário", "Transferência", "Outros"]
-
 const exitReasons = ["Venda", "Uso em serviço", "Perda", "Devolução ao fornecedor", "Transferência", "Outros"]
 
 export function StockEntryForm({ isOpen, onClose, onSubmit, preSelectedPartId }: StockEntryFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const { toast } = useToast()
   const { parts, loading: partsLoading } = useParts()
 
-  const {
-    register,
-    handleSubmit,
-    reset,
-    setValue,
-    watch,
-    formState: { errors },
-  } = useForm<StockEntryFormData>({
-    resolver: zodResolver(stockEntrySchema),
-    defaultValues: {
-      part_id: preSelectedPartId || "",
-      quantity: 1,
-      type: "entry",
-      reason: "",
-      notes: "",
-    },
+  const [formData, setFormData] = useState({
+    part_id: preSelectedPartId || "",
+    quantity: 1,
+    type: "entry" as "entry" | "exit",
+    reason: "",
+    notes: "",
   })
-
-  const selectedPartId = watch("part_id")
-  const selectedType = watch("type")
-  const selectedReason = watch("reason")
-
-  const selectedPart = parts.find((part) => part.id === selectedPartId)
-  const availableReasons = selectedType === "entry" ? entryReasons : exitReasons
 
   useEffect(() => {
     if (preSelectedPartId) {
-      setValue("part_id", preSelectedPartId)
+      setFormData((prev) => ({ ...prev, part_id: preSelectedPartId }))
     }
-  }, [preSelectedPartId, setValue])
+  }, [preSelectedPartId])
 
   useEffect(() => {
     // Reset reason when type changes
-    setValue("reason", "")
-  }, [selectedType, setValue])
+    setFormData((prev) => ({ ...prev, reason: "" }))
+  }, [formData.type])
 
-  const handleFormSubmit = async (data: StockEntryFormData) => {
+  const selectedPart = parts.find((part) => part.id === formData.part_id)
+  const availableReasons = formData.type === "entry" ? entryReasons : exitReasons
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
     setIsSubmitting(true)
+
     try {
-      await onSubmit(data)
-      toast({
-        title: "Sucesso",
-        description: `${data.type === "entry" ? "Entrada" : "Saída"} de estoque registrada com sucesso!`,
+      await onSubmit(formData)
+      setFormData({
+        part_id: "",
+        quantity: 1,
+        type: "entry",
+        reason: "",
+        notes: "",
       })
-      reset()
-      onClose()
     } catch (error) {
-      toast({
-        title: "Erro",
-        description: "Ocorreu um erro ao registrar a movimentação.",
-        variant: "destructive",
-      })
+      console.error("Error submitting stock entry:", error)
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  const handleInputChange = (field: string, value: any) => {
+    setFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }))
   }
 
   return (
@@ -103,12 +81,12 @@ export function StockEntryForm({ isOpen, onClose, onSubmit, preSelectedPartId }:
           <DialogTitle>Movimentação de Estoque</DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label>Peça *</Label>
             <Select
-              value={selectedPartId}
-              onValueChange={(value) => setValue("part_id", value)}
+              value={formData.part_id}
+              onValueChange={(value) => handleInputChange("part_id", value)}
               disabled={partsLoading}
             >
               <SelectTrigger>
@@ -117,28 +95,29 @@ export function StockEntryForm({ isOpen, onClose, onSubmit, preSelectedPartId }:
               <SelectContent>
                 {parts.map((part) => (
                   <SelectItem key={part.id} value={part.id}>
-                    {part.name} - {part.code} (Estoque: {part.quantity})
+                    {part.name} - {part.code || part.partNumber} (Estoque: {part.quantity || part.stockQuantity || 0})
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            {errors.part_id && <p className="text-sm text-red-600">{errors.part_id.message}</p>}
           </div>
 
           {selectedPart && (
             <div className="p-3 bg-gray-50 rounded-md">
               <p className="text-sm">
-                <strong>Estoque atual:</strong> {selectedPart.quantity} {selectedPart.unit}
+                <strong>Estoque atual:</strong> {selectedPart.quantity || selectedPart.stockQuantity || 0}{" "}
+                {selectedPart.unit || "un"}
               </p>
               <p className="text-sm">
-                <strong>Estoque mínimo:</strong> {selectedPart.minimum_stock} {selectedPart.unit}
+                <strong>Estoque mínimo:</strong> {selectedPart.minimum_stock || selectedPart.minStockLevel || 0}{" "}
+                {selectedPart.unit || "un"}
               </p>
             </div>
           )}
 
           <div className="space-y-2">
             <Label>Tipo de Movimentação *</Label>
-            <Select value={selectedType} onValueChange={(value: "entry" | "exit") => setValue("type", value)}>
+            <Select value={formData.type} onValueChange={(value: "entry" | "exit") => handleInputChange("type", value)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -147,18 +126,24 @@ export function StockEntryForm({ isOpen, onClose, onSubmit, preSelectedPartId }:
                 <SelectItem value="exit">Saída</SelectItem>
               </SelectContent>
             </Select>
-            {errors.type && <p className="text-sm text-red-600">{errors.type.message}</p>}
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="quantity">Quantidade *</Label>
-            <Input id="quantity" type="number" min="1" step="1" {...register("quantity", { valueAsNumber: true })} />
-            {errors.quantity && <p className="text-sm text-red-600">{errors.quantity.message}</p>}
+            <Input
+              id="quantity"
+              type="number"
+              min="1"
+              step="1"
+              value={formData.quantity}
+              onChange={(e) => handleInputChange("quantity", Number(e.target.value))}
+              required
+            />
           </div>
 
           <div className="space-y-2">
             <Label>Motivo *</Label>
-            <Select value={selectedReason} onValueChange={(value) => setValue("reason", value)}>
+            <Select value={formData.reason} onValueChange={(value) => handleInputChange("reason", value)}>
               <SelectTrigger>
                 <SelectValue placeholder="Selecione o motivo" />
               </SelectTrigger>
@@ -170,12 +155,17 @@ export function StockEntryForm({ isOpen, onClose, onSubmit, preSelectedPartId }:
                 ))}
               </SelectContent>
             </Select>
-            {errors.reason && <p className="text-sm text-red-600">{errors.reason.message}</p>}
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="notes">Observações</Label>
-            <Textarea id="notes" {...register("notes")} placeholder="Observações adicionais..." rows={3} />
+            <Textarea
+              id="notes"
+              value={formData.notes}
+              onChange={(e) => handleInputChange("notes", e.target.value)}
+              placeholder="Observações adicionais..."
+              rows={3}
+            />
           </div>
 
           <div className="flex justify-end gap-2 pt-4">

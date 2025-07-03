@@ -16,12 +16,15 @@ interface UsePaginationReturn<T> {
   goToPreviousPage: () => void
   hasNextPage: boolean
   hasPreviousPage: boolean
+  startIndex: number
+  endIndex: number
+  totalItems: number
 }
 
 export function usePagination<T>({ data, itemsPerPage }: UsePaginationProps<T>): UsePaginationReturn<T> {
   const [currentPage, setCurrentPage] = useState(1)
 
-  // Reset to first page when data changes
+  // Reset to page 1 when data changes
   useEffect(() => {
     setCurrentPage(1)
   }, [data])
@@ -29,11 +32,10 @@ export function usePagination<T>({ data, itemsPerPage }: UsePaginationProps<T>):
   const totalPages = useMemo(() => {
     if (!data || data.length === 0) return 1
     return Math.ceil(data.length / itemsPerPage)
-  }, [data.length, itemsPerPage])
+  }, [data, itemsPerPage])
 
   const paginatedData = useMemo(() => {
     if (!data || data.length === 0) return []
-
     const startIndex = (currentPage - 1) * itemsPerPage
     const endIndex = startIndex + itemsPerPage
     return data.slice(startIndex, endIndex)
@@ -60,6 +62,10 @@ export function usePagination<T>({ data, itemsPerPage }: UsePaginationProps<T>):
   const hasNextPage = currentPage < totalPages
   const hasPreviousPage = currentPage > 1
 
+  const startIndex = data.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1
+  const endIndex = Math.min(currentPage * itemsPerPage, data.length)
+  const totalItems = data.length
+
   return {
     currentPage,
     totalPages,
@@ -69,5 +75,8 @@ export function usePagination<T>({ data, itemsPerPage }: UsePaginationProps<T>):
     goToPreviousPage,
     hasNextPage,
     hasPreviousPage,
+    startIndex,
+    endIndex,
+    totalItems,
   }
 }
