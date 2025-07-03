@@ -2,81 +2,98 @@
 
 import type React from "react"
 
-import { useAuth } from "@/contexts/auth-context"
-import { AppSidebar } from "./app-sidebar"
-import { Button } from "@/components/ui/button"
+import { AppSidebar } from "@/components/layout/app-sidebar"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
+import { Separator } from "@/components/ui/separator"
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { LogOut, User } from "lucide-react"
-import { useRouter } from "next/navigation"
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb"
+import { usePathname } from "next/navigation"
 
 interface DashboardLayoutProps {
   children: React.ReactNode
 }
 
-export function DashboardLayout({ children }: DashboardLayoutProps) {
-  const { user, signOut } = useAuth()
-  const router = useRouter()
+const pathTitles: Record<string, string> = {
+  "/dashboard": "Dashboard",
+  "/dashboard/customers": "Clientes",
+  "/dashboard/motorcycles": "Motocicletas",
+  "/dashboard/budgets": "Orçamentos",
+  "/dashboard/service-orders": "Ordens de Serviço",
+  "/dashboard/inventory": "Estoque",
+  "/dashboard/financial": "Financeiro",
+  "/dashboard/reports": "Relatórios",
+  "/dashboard/settings": "Configurações",
+}
 
-  const handleSignOut = async () => {
-    await signOut()
-    router.push("/login")
+export function DashboardLayout({ children }: DashboardLayoutProps) {
+  const pathname = usePathname()
+  const currentTitle = pathTitles[pathname] || "Dashboard"
+
+  const getBreadcrumbs = () => {
+    const segments = pathname.split("/").filter(Boolean)
+    const breadcrumbs = []
+
+    if (segments.length > 1) {
+      breadcrumbs.push({
+        title: "Dashboard",
+        href: "/dashboard",
+        isLast: false,
+      })
+    }
+
+    if (segments.length > 2) {
+      const currentPath = `/${segments.slice(0, -1).join("/")}`
+      breadcrumbs.push({
+        title: pathTitles[currentPath] || segments[segments.length - 2],
+        href: currentPath,
+        isLast: false,
+      })
+    }
+
+    breadcrumbs.push({
+      title: currentTitle,
+      href: pathname,
+      isLast: true,
+    })
+
+    return breadcrumbs
   }
 
-  const userInitials =
-    user?.user_metadata?.full_name
-      ?.split(" ")
-      .map((n: string) => n[0])
-      .join("")
-      .toUpperCase() ||
-    user?.email?.[0].toUpperCase() ||
-    "U"
+  const breadcrumbs = getBreadcrumbs()
 
   return (
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset>
-        <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
-          <SidebarTrigger className="-ml-1" />
-          <div className="ml-auto flex items-center gap-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-                  <Avatar className="h-8 w-8">
-                    <AvatarFallback>{userInitials}</AvatarFallback>
-                  </Avatar>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-56" align="end" forceMount>
-                <DropdownMenuLabel className="font-normal">
-                  <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium leading-none">{user?.user_metadata?.full_name || "Usuário"}</p>
-                    <p className="text-xs leading-none text-muted-foreground">{user?.email}</p>
+        <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
+          <div className="flex items-center gap-2 px-4">
+            <SidebarTrigger className="-ml-1" />
+            <Separator orientation="vertical" className="mr-2 h-4" />
+            <Breadcrumb>
+              <BreadcrumbList>
+                {breadcrumbs.map((breadcrumb, index) => (
+                  <div key={breadcrumb.href} className="flex items-center">
+                    {index > 0 && <BreadcrumbSeparator className="hidden md:block" />}
+                    <BreadcrumbItem className={index === 0 ? "hidden md:block" : ""}>
+                      {breadcrumb.isLast ? (
+                        <BreadcrumbPage>{breadcrumb.title}</BreadcrumbPage>
+                      ) : (
+                        <BreadcrumbLink href={breadcrumb.href}>{breadcrumb.title}</BreadcrumbLink>
+                      )}
+                    </BreadcrumbItem>
                   </div>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem>
-                  <User className="mr-2 h-4 w-4" />
-                  <span>Perfil</span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleSignOut}>
-                  <LogOut className="mr-2 h-4 w-4" />
-                  <span>Sair</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                ))}
+              </BreadcrumbList>
+            </Breadcrumb>
           </div>
         </header>
-        <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-6">{children}</main>
+        <div className="flex flex-1 flex-col gap-4 p-4 pt-0">{children}</div>
       </SidebarInset>
     </SidebarProvider>
   )

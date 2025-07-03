@@ -26,7 +26,7 @@ import { usePagination } from "@/hooks/use-pagination"
 import type { ServiceOrder } from "@/domain/entities/service-order"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { useToast } from "@/hooks/use-toast"
+import { useToast } from "@/contexts/toast-context"
 
 const statusColors = {
   pending: "bg-yellow-100 text-yellow-800",
@@ -50,7 +50,7 @@ export default function ServiceOrdersPage() {
   const [selectedServiceOrder, setSelectedServiceOrder] = useState<ServiceOrder | null>(null)
   const [serviceOrderToDelete, setServiceOrderToDelete] = useState<ServiceOrder | null>(null)
 
-  const { toast } = useToast()
+  const { success, error: showError } = useToast()
   const {
     serviceOrders,
     loading,
@@ -63,9 +63,9 @@ export default function ServiceOrdersPage() {
   // Filter service orders
   const filteredServiceOrders = serviceOrders.filter((serviceOrder) => {
     const matchesSearch =
-      serviceOrder.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      serviceOrder.motorcycle_model.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      serviceOrder.motorcycle_plate.toLowerCase().includes(searchTerm.toLowerCase())
+      serviceOrder.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      serviceOrder.motorcycle_model?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      serviceOrder.motorcycle_plate?.toLowerCase().includes(searchTerm.toLowerCase())
 
     const matchesStatus = statusFilter === "all" || serviceOrder.status === statusFilter
 
@@ -75,40 +75,39 @@ export default function ServiceOrdersPage() {
   const {
     currentPage,
     totalPages,
-    paginatedItems: paginatedServiceOrders,
+    paginatedData: paginatedServiceOrders,
     goToPage,
     goToNextPage,
     goToPreviousPage,
-  } = usePagination(filteredServiceOrders, 10)
+  } = usePagination({ data: filteredServiceOrders, itemsPerPage: 10 })
 
   const handleCreateServiceOrder = async (data: any) => {
-    await createServiceOrder(data)
-    setIsFormOpen(false)
+    const result = await createServiceOrder(data)
+    if (result) {
+      setIsFormOpen(false)
+    }
   }
 
   const handleUpdateServiceOrder = async (data: any) => {
     if (selectedServiceOrder) {
-      await updateServiceOrder(selectedServiceOrder.id, data)
-      setSelectedServiceOrder(null)
-      setIsFormOpen(false)
-      setIsDetailsOpen(false)
+      const result = await updateServiceOrder(selectedServiceOrder.id, data)
+      if (result) {
+        setSelectedServiceOrder(null)
+        setIsFormOpen(false)
+        setIsDetailsOpen(false)
+      }
     }
   }
 
   const handleDeleteServiceOrder = async () => {
     if (serviceOrderToDelete) {
       try {
-        await deleteServiceOrder(serviceOrderToDelete.id)
-        toast({
-          title: "Sucesso",
-          description: "Ordem de serviço excluída com sucesso!",
-        })
+        const result = await deleteServiceOrder(serviceOrderToDelete.id)
+        if (result) {
+          success("Sucesso", "Ordem de serviço excluída com sucesso!")
+        }
       } catch (error) {
-        toast({
-          title: "Erro",
-          description: "Erro ao excluir ordem de serviço.",
-          variant: "destructive",
-        })
+        showError("Erro", "Erro ao excluir ordem de serviço.")
       } finally {
         setServiceOrderToDelete(null)
       }
@@ -117,17 +116,12 @@ export default function ServiceOrdersPage() {
 
   const handleStatusChange = async (serviceOrderId: string, newStatus: string) => {
     try {
-      await updateServiceOrderStatus(serviceOrderId, newStatus as any)
-      toast({
-        title: "Sucesso",
-        description: "Status atualizado com sucesso!",
-      })
+      const result = await updateServiceOrderStatus(serviceOrderId, newStatus as any)
+      if (result) {
+        success("Sucesso", "Status atualizado com sucesso!")
+      }
     } catch (error) {
-      toast({
-        title: "Erro",
-        description: "Erro ao atualizar status.",
-        variant: "destructive",
-      })
+      showError("Erro", "Erro ao atualizar status.")
     }
   }
 
@@ -144,6 +138,14 @@ export default function ServiceOrdersPage() {
   const handleEditFromDetails = (serviceOrder: ServiceOrder) => {
     setIsDetailsOpen(false)
     setIsFormOpen(true)
+  }
+
+  const formatCurrency = (value: number | null | undefined) => {
+    if (!value || isNaN(value)) return "R$ 0,00"
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format(value)
   }
 
   if (loading) {
@@ -222,14 +224,14 @@ export default function ServiceOrdersPage() {
                     <TableRow key={serviceOrder.id}>
                       <TableCell>
                         <div>
-                          <p className="font-medium">{serviceOrder.customer_name}</p>
-                          <p className="text-sm text-gray-500">{serviceOrder.customer_email}</p>
+                          <p className="font-medium">{serviceOrder.customer_name || "Cliente não informado"}</p>
+                          <p className="text-sm text-gray-500">{serviceOrder.customer_email || ""}</p>
                         </div>
                       </TableCell>
                       <TableCell>
                         <div>
-                          <p className="font-medium">{serviceOrder.motorcycle_model}</p>
-                          <p className="text-sm text-gray-500">{serviceOrder.motorcycle_plate}</p>
+                          <p className="font-medium">{serviceOrder.motorcycle_model || "Modelo não informado"}</p>
+                          <p className="text-sm text-gray-500">{serviceOrder.motorcycle_plate || ""}</p>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -238,8 +240,8 @@ export default function ServiceOrdersPage() {
                           onValueChange={(value) => handleStatusChange(serviceOrder.id, value)}
                         >
                           <SelectTrigger className="w-32">
-                            <Badge className={statusColors[serviceOrder.status]}>
-                              {statusLabels[serviceOrder.status]}
+                            <Badge className={statusColors[serviceOrder.status as keyof typeof statusColors]}>
+                              {statusLabels[serviceOrder.status as keyof typeof statusLabels]}
                             </Badge>
                           </SelectTrigger>
                           <SelectContent>
@@ -250,13 +252,12 @@ export default function ServiceOrdersPage() {
                           </SelectContent>
                         </Select>
                       </TableCell>
-                      <TableCell>{format(new Date(serviceOrder.created_at), "dd/MM/yyyy", { locale: ptBR })}</TableCell>
                       <TableCell>
-                        {new Intl.NumberFormat("pt-BR", {
-                          style: "currency",
-                          currency: "BRL",
-                        }).format(serviceOrder.total_amount)}
+                        {serviceOrder.created_at
+                          ? format(new Date(serviceOrder.created_at), "dd/MM/yyyy", { locale: ptBR })
+                          : "Data não informada"}
                       </TableCell>
+                      <TableCell>{formatCurrency(serviceOrder.total_amount)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
                           <Button variant="ghost" size="sm" onClick={() => handleViewDetails(serviceOrder)}>

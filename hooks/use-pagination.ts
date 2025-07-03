@@ -10,7 +10,7 @@ interface UsePaginationProps {
 export function usePagination({ data = [], itemsPerPage = 10 }: UsePaginationProps) {
   const [currentPage, setCurrentPage] = useState(1)
 
-  const totalPages = Math.ceil(data.length / itemsPerPage)
+  const totalPages = Math.max(1, Math.ceil(data.length / itemsPerPage))
 
   const paginatedData = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage
@@ -19,9 +19,8 @@ export function usePagination({ data = [], itemsPerPage = 10 }: UsePaginationPro
   }, [data, currentPage, itemsPerPage])
 
   const goToPage = (page: number) => {
-    if (page >= 1 && page <= totalPages) {
-      setCurrentPage(page)
-    }
+    const validPage = Math.max(1, Math.min(page, totalPages))
+    setCurrentPage(validPage)
   }
 
   const goToNextPage = () => {
@@ -36,12 +35,12 @@ export function usePagination({ data = [], itemsPerPage = 10 }: UsePaginationPro
     }
   }
 
-  const hasNextPage = currentPage < totalPages
-  const hasPreviousPage = currentPage > 1
-
-  const startIndex = (currentPage - 1) * itemsPerPage + 1
-  const endIndex = Math.min(currentPage * itemsPerPage, data.length)
-  const totalItems = data.length
+  // Reset to page 1 when data changes significantly
+  useMemo(() => {
+    if (currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(1)
+    }
+  }, [totalPages, currentPage])
 
   return {
     currentPage,
@@ -50,10 +49,8 @@ export function usePagination({ data = [], itemsPerPage = 10 }: UsePaginationPro
     goToPage,
     goToNextPage,
     goToPreviousPage,
-    hasNextPage,
-    hasPreviousPage,
-    startIndex,
-    endIndex,
-    totalItems,
+    hasNextPage: currentPage < totalPages,
+    hasPreviousPage: currentPage > 1,
+    totalItems: data.length,
   }
 }

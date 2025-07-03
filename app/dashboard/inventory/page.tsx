@@ -37,7 +37,7 @@ import { Pagination } from "@/components/ui/pagination"
 import { useParts } from "@/hooks/use-parts"
 import { usePagination } from "@/hooks/use-pagination"
 import type { Part } from "@/domain/entities/part"
-import { useToast } from "@/hooks/use-toast"
+import { useToast } from "@/contexts/toast-context"
 
 export default function InventoryPage() {
   const [searchTerm, setSearchTerm] = useState("")
@@ -49,26 +49,48 @@ export default function InventoryPage() {
   const [selectedPart, setSelectedPart] = useState<Part | null>(null)
   const [partToDelete, setPartToDelete] = useState<Part | null>(null)
 
-  const { toast } = useToast()
+  const { success, error: showError } = useToast()
   const { parts, loading, createPart, updatePart, deletePart, updatePartStock } = useParts()
 
+  // Helper function to safely format currency
+  const formatCurrency = (value: number | null | undefined) => {
+    if (value === null || value === undefined || isNaN(value)) {
+      return "R$ 0,00"
+    }
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format(value)
+  }
+
+  // Helper function to safely get numeric values
+  const getNumericValue = (value: any): number => {
+    if (value === null || value === undefined || isNaN(Number(value))) {
+      return 0
+    }
+    return Number(value)
+  }
+
   // Get unique categories
-  const categories = Array.from(new Set(parts.map((part) => part.category))).sort()
+  const categories = Array.from(new Set(parts.map((part) => part.category).filter(Boolean))).sort()
 
   // Filter parts
   const filteredParts = parts.filter((part) => {
     const matchesSearch =
-      part.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      part.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      part.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      part.code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       part.description?.toLowerCase().includes(searchTerm.toLowerCase())
 
     const matchesCategory = categoryFilter === "all" || part.category === categoryFilter
 
     let matchesStock = true
+    const quantity = getNumericValue(part.quantity)
+    const minStock = getNumericValue(part.minimum_stock)
+
     if (stockFilter === "low") {
-      matchesStock = part.quantity <= part.minimum_stock
+      matchesStock = quantity <= minStock && quantity > 0
     } else if (stockFilter === "out") {
-      matchesStock = part.quantity === 0
+      matchesStock = quantity === 0
     }
 
     return matchesSearch && matchesCategory && matchesStock
@@ -84,38 +106,47 @@ export default function InventoryPage() {
   } = usePagination({ data: filteredParts, itemsPerPage: 10 })
 
   // Calculate stats
-  const lowStockCount = parts.filter((part) => part.quantity <= part.minimum_stock && part.quantity > 0).length
-  const outOfStockCount = parts.filter((part) => part.quantity === 0).length
-  const totalValue = parts.reduce((sum, part) => sum + part.quantity * part.cost_price, 0)
+  const lowStockCount = parts.filter((part) => {
+    const quantity = getNumericValue(part.quantity)
+    const minStock = getNumericValue(part.minimum_stock)
+    return quantity <= minStock && quantity > 0
+  }).length
+
+  const outOfStockCount = parts.filter((part) => getNumericValue(part.quantity) === 0).length
+
+  const totalValue = parts.reduce((sum, part) => {
+    const quantity = getNumericValue(part.quantity)
+    const costPrice = getNumericValue(part.cost_price)
+    return sum + quantity * costPrice
+  }, 0)
 
   const handleCreatePart = async (data: any) => {
-    await createPart(data)
-    setIsPartFormOpen(false)
+    const result = await createPart(data)
+    if (result) {
+      setIsPartFormOpen(false)
+    }
   }
 
   const handleUpdatePart = async (data: any) => {
     if (selectedPart) {
-      await updatePart(selectedPart.id, data)
-      setSelectedPart(null)
-      setIsPartFormOpen(false)
-      setIsDetailsOpen(false)
+      const result = await updatePart(selectedPart.id, data)
+      if (result) {
+        setSelectedPart(null)
+        setIsPartFormOpen(false)
+        setIsDetailsOpen(false)
+      }
     }
   }
 
   const handleDeletePart = async () => {
     if (partToDelete) {
       try {
-        await deletePart(partToDelete.id)
-        toast({
-          title: "Sucesso",
-          description: "Peça excluída com sucesso!",
-        })
+        const result = await deletePart(partToDelete.id)
+        if (result) {
+          success("Sucesso", "Peça excluída com sucesso!")
+        }
       } catch (error) {
-        toast({
-          title: "Erro",
-          description: "Erro ao excluir peça.",
-          variant: "destructive",
-        })
+        showError("Erro", "Erro ao excluir peça.")
       } finally {
         setPartToDelete(null)
       }
@@ -127,29 +158,22 @@ export default function InventoryPage() {
       const part = parts.find((p) => p.id === data.part_id)
       if (!part) return
 
-      const newQuantity = data.type === "entry" ? part.quantity + data.quantity : part.quantity - data.quantity
+      const currentQuantity = getNumericValue(part.quantity)
+      const entryQuantity = getNumericValue(data.quantity)
+      const newQuantity = data.type === "entry" ? currentQuantity + entryQuantity : currentQuantity - entryQuantity
 
       if (newQuantity < 0) {
-        toast({
-          title: "Erro",
-          description: "Quantidade insuficiente em estoque.",
-          variant: "destructive",
-        })
+        showError("Erro", "Quantidade insuficiente em estoque.")
         return
       }
 
-      await updatePartStock(data.part_id, newQuantity)
-      toast({
-        title: "Sucesso",
-        description: `${data.type === "entry" ? "Entrada" : "Saída"} registrada com sucesso!`,
-      })
-      setIsStockEntryOpen(false)
+      const result = await updatePartStock(data.part_id, newQuantity)
+      if (result) {
+        success("Sucesso", `${data.type === "entry" ? "Entrada" : "Saída"} registrada com sucesso!`)
+        setIsStockEntryOpen(false)
+      }
     } catch (error) {
-      toast({
-        title: "Erro",
-        description: "Erro ao registrar movimentação.",
-        variant: "destructive",
-      })
+      showError("Erro", "Erro ao registrar movimentação.")
     }
   }
 
@@ -235,12 +259,7 @@ export default function InventoryPage() {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {new Intl.NumberFormat("pt-BR", {
-                style: "currency",
-                currency: "BRL",
-              }).format(totalValue)}
-            </div>
+            <div className="text-2xl font-bold">{formatCurrency(totalValue)}</div>
           </CardContent>
         </Card>
       </div>
@@ -308,21 +327,26 @@ export default function InventoryPage() {
                   </TableRow>
                 ) : (
                   paginatedParts.map((part) => {
-                    const isLowStock = part.quantity <= part.minimum_stock
-                    const isOutOfStock = part.quantity === 0
+                    const quantity = getNumericValue(part.quantity)
+                    const minStock = getNumericValue(part.minimum_stock)
+                    const costPrice = getNumericValue(part.cost_price)
+                    const salePrice = getNumericValue(part.sale_price)
+
+                    const isLowStock = quantity <= minStock && quantity > 0
+                    const isOutOfStock = quantity === 0
 
                     return (
                       <TableRow key={part.id}>
                         <TableCell>
                           <div>
-                            <p className="font-medium">{part.name}</p>
-                            <p className="text-sm text-gray-500">{part.description}</p>
+                            <p className="font-medium">{part.name || "Nome não informado"}</p>
+                            <p className="text-sm text-gray-500">{part.description || ""}</p>
                           </div>
                         </TableCell>
                         <TableCell>
-                          <code className="text-sm">{part.code}</code>
+                          <code className="text-sm">{part.code || "N/A"}</code>
                         </TableCell>
-                        <TableCell>{part.category}</TableCell>
+                        <TableCell>{part.category || "Sem categoria"}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <span
@@ -330,7 +354,7 @@ export default function InventoryPage() {
                                 isOutOfStock ? "text-red-600" : isLowStock ? "text-yellow-600" : "text-green-600"
                               }`}
                             >
-                              {part.quantity} {part.unit}
+                              {quantity} {part.unit || "un"}
                             </span>
                             {isOutOfStock && (
                               <Badge variant="destructive" className="text-xs">
@@ -344,24 +368,13 @@ export default function InventoryPage() {
                             )}
                           </div>
                           <p className="text-xs text-gray-500">
-                            Mín: {part.minimum_stock} {part.unit}
+                            Mín: {minStock} {part.unit || "un"}
                           </p>
                         </TableCell>
                         <TableCell>
                           <div>
-                            <p className="font-medium">
-                              {new Intl.NumberFormat("pt-BR", {
-                                style: "currency",
-                                currency: "BRL",
-                              }).format(part.sale_price)}
-                            </p>
-                            <p className="text-sm text-gray-500">
-                              Custo:{" "}
-                              {new Intl.NumberFormat("pt-BR", {
-                                style: "currency",
-                                currency: "BRL",
-                              }).format(part.cost_price)}
-                            </p>
+                            <p className="font-medium">{formatCurrency(salePrice)}</p>
+                            <p className="text-sm text-gray-500">Custo: {formatCurrency(costPrice)}</p>
                           </div>
                         </TableCell>
                         <TableCell className="text-right">
