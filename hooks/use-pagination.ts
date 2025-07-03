@@ -1,56 +1,80 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 
-interface UsePaginationProps {
-  data: any[]
-  itemsPerPage: number
+/**
+ * Hook genérico para paginação.
+ *
+ * @param data         Lista de itens a serem paginados.
+ * @param itemsPerPage Quantidade de itens por página.
+ *
+ * @example
+ * const {
+ *   currentPage,
+ *   totalPages,
+ *   paginatedData,
+ *   goToPage,
+ *   goToNextPage,
+ *   goToPreviousPage,
+ *   hasNextPage,
+ *   hasPreviousPage,
+ *   totalItems,
+ * } = usePagination({ data, itemsPerPage: 10 })
+ */
+interface UsePaginationProps<T> {
+  data: T[]
+  itemsPerPage?: number
 }
 
-export function usePagination({ data = [], itemsPerPage = 10 }: UsePaginationProps) {
+export function usePagination<T>({ data, itemsPerPage = 10 }: UsePaginationProps<T>) {
+  // Página atual (1-based).
   const [currentPage, setCurrentPage] = useState(1)
 
-  const totalPages = Math.max(1, Math.ceil(data.length / itemsPerPage))
+  // Quando a lista de dados muda, volte para a primeira página.
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [data])
 
+  // Quantidade total de páginas.
+  const totalPages = useMemo(() => {
+    return Math.max(1, Math.ceil(data.length / itemsPerPage))
+  }, [data.length, itemsPerPage])
+
+  // Lista de itens visíveis na página atual.
   const paginatedData = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage
-    const endIndex = startIndex + itemsPerPage
-    return data.slice(startIndex, endIndex)
-  }, [data, currentPage, itemsPerPage])
+    const start = (currentPage - 1) * itemsPerPage
+    const end = start + itemsPerPage
+    return data.slice(start, end)
+  }, [currentPage, data, itemsPerPage])
 
+  /* ---- Navegação ---- */
   const goToPage = (page: number) => {
-    const validPage = Math.max(1, Math.min(page, totalPages))
-    setCurrentPage(validPage)
+    const clamped = Math.min(Math.max(page, 1), totalPages)
+    setCurrentPage(clamped)
   }
 
   const goToNextPage = () => {
-    if (currentPage < totalPages) {
-      setCurrentPage(currentPage + 1)
-    }
+    setCurrentPage((prev) => Math.min(prev + 1, totalPages))
   }
 
   const goToPreviousPage = () => {
-    if (currentPage > 1) {
-      setCurrentPage(currentPage - 1)
-    }
+    setCurrentPage((prev) => Math.max(prev - 1, 1))
   }
 
-  // Reset to page 1 when data changes significantly
-  useMemo(() => {
-    if (currentPage > totalPages && totalPages > 0) {
-      setCurrentPage(1)
-    }
-  }, [totalPages, currentPage])
-
   return {
+    /* estado */
     currentPage,
     totalPages,
     paginatedData,
+    totalItems: data.length,
+
+    /* helpers */
+    hasNextPage: currentPage < totalPages,
+    hasPreviousPage: currentPage > 1,
+
+    /* ações */
     goToPage,
     goToNextPage,
     goToPreviousPage,
-    hasNextPage: currentPage < totalPages,
-    hasPreviousPage: currentPage > 1,
-    totalItems: data.length,
   }
 }

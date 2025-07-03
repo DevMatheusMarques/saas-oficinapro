@@ -4,17 +4,18 @@ import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { DatePickerWithRange } from "@/components/ui/date-range-picker"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts"
-import { FileText, DollarSign, TrendingUp, Package, Wrench, FileSpreadsheet, FileIcon as FilePdf } from "lucide-react"
+import { FileText, DollarSign, TrendingUp, Package, Wrench, FileSpreadsheet, FileDown } from "lucide-react"
 import { format, startOfMonth, endOfMonth } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import type { DateRange } from "react-day-picker"
 import { useCustomers } from "@/hooks/use-customers"
 import { useParts } from "@/hooks/use-parts"
 import { useServiceOrders } from "@/hooks/use-service-orders"
 import { useBudgets } from "@/hooks/use-budgets"
+import { usePayments } from "@/hooks/use-payments"
 import { useToast } from "@/contexts/toast-context"
 
 // Cores para os gráficos
@@ -22,16 +23,15 @@ const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884D8"]
 
 export default function ReportsPage() {
   const [reportType, setReportType] = useState("sales")
-  const [dateRange, setDateRange] = useState<DateRange | undefined>({
-    from: startOfMonth(new Date()),
-    to: endOfMonth(new Date()),
-  })
+  const [startDate, setStartDate] = useState(format(startOfMonth(new Date()), "yyyy-MM-dd"))
+  const [endDate, setEndDate] = useState(format(endOfMonth(new Date()), "yyyy-MM-dd"))
 
   const { success, error: showError } = useToast()
   const { customers } = useCustomers()
   const { parts } = useParts()
   const { serviceOrders } = useServiceOrders()
   const { budgets } = useBudgets()
+  const { payments } = usePayments()
 
   // Helper functions
   const formatCurrency = (value: number) => {
@@ -47,30 +47,42 @@ export default function ReportsPage() {
     return Number(value)
   }
 
-  const isInDateRange = (date: string) => {
-    if (!dateRange?.from || !dateRange?.to) return true
+  const isInDateRange = (date: string | Date) => {
+    if (!startDate || !endDate) return true
     const itemDate = new Date(date)
-    return itemDate >= dateRange.from && itemDate <= dateRange.to
+    const start = new Date(startDate)
+    const end = new Date(endDate)
+    return itemDate >= start && itemDate <= end
   }
 
   // Filter data by date range
-  const filteredServiceOrders = serviceOrders.filter((order) =>
-    order.created_at ? isInDateRange(order.created_at) : false,
-  )
-  const filteredBudgets = budgets.filter((budget) => (budget.created_at ? isInDateRange(budget.created_at) : false))
+  const filteredServiceOrders = serviceOrders.filter((order) => {
+    const orderDate = order.created_at || order.createdAt
+    return orderDate ? isInDateRange(orderDate) : false
+  })
+
+  const filteredBudgets = budgets.filter((budget) => {
+    const budgetDate = budget.created_at || budget.createdAt
+    return budgetDate ? isInDateRange(budgetDate) : false
+  })
+
+  const filteredPayments = payments.filter((payment) => {
+    const paymentDate = payment.created_at || payment.createdAt || payment.paymentDate
+    return paymentDate ? isInDateRange(paymentDate) : false
+  })
 
   // Calculate metrics
   const totalRevenue = filteredServiceOrders
     .filter((order) => order.status === "completed")
-    .reduce((sum, order) => sum + getNumericValue(order.total_amount), 0)
+    .reduce((sum, order) => sum + getNumericValue(order.total_amount || order.totalAmount), 0)
 
   const totalBudgets = filteredBudgets.length
   const approvedBudgets = filteredBudgets.filter((budget) => budget.status === "approved").length
   const conversionRate = totalBudgets > 0 ? (approvedBudgets / totalBudgets) * 100 : 0
 
   const lowStockParts = parts.filter((part) => {
-    const quantity = getNumericValue(part.quantity)
-    const minStock = getNumericValue(part.minimum_stock)
+    const quantity = getNumericValue(part.quantity || part.stockQuantity)
+    const minStock = getNumericValue(part.minimum_stock || part.minStockLevel)
     return quantity <= minStock
   })
 
@@ -78,9 +90,12 @@ export default function ReportsPage() {
   const salesData = filteredServiceOrders
     .filter((order) => order.status === "completed")
     .reduce((acc: any[], order) => {
-      const date = format(new Date(order.created_at), "dd/MM", { locale: ptBR })
+      const orderDate = order.created_at || order.createdAt
+      if (!orderDate) return acc
+
+      const date = format(new Date(orderDate), "dd/MM", { locale: ptBR })
       const existing = acc.find((item) => item.date === date)
-      const amount = getNumericValue(order.total_amount)
+      const amount = getNumericValue(order.total_amount || order.totalAmount)
 
       if (existing) {
         existing.value += amount
@@ -100,8 +115,13 @@ export default function ReportsPage() {
 
   const topCustomers = customers
     .map((customer) => {
-      const customerOrders = filteredServiceOrders.filter((order) => order.customer_id === customer.id)
-      const totalSpent = customerOrders.reduce((sum, order) => sum + getNumericValue(order.total_amount), 0)
+      const customerOrders = filteredServiceOrders.filter(
+        (order) => order.customer_id === customer.id || order.customerId === customer.id,
+      )
+      const totalSpent = customerOrders.reduce(
+        (sum, order) => sum + getNumericValue(order.total_amount || order.totalAmount),
+        0,
+      )
       return {
         name: customer.name,
         email: customer.email,
@@ -162,11 +182,15 @@ export default function ReportsPage() {
       doc.setFontSize(12)
       doc.text(`Gerado em: ${format(new Date(), "dd/MM/yyyy HH:mm", { locale: ptBR })}`, 20, 45)
 
-      if (dateRange?.from && dateRange?.to) {
+      if (startDate && endDate) {
         doc.text(
-          `Período: ${format(dateRange.from, "dd/MM/yyyy", { locale: ptBR })} - ${format(dateRange.to, "dd/MM/yyyy", {
-            locale: ptBR,
-          })}`,
+          `Período: ${format(new Date(startDate), "dd/MM/yyyy", { locale: ptBR })} - ${format(
+            new Date(endDate),
+            "dd/MM/yyyy",
+            {
+              locale: ptBR,
+            },
+          )}`,
           20,
           55,
         )
@@ -222,10 +246,13 @@ export default function ReportsPage() {
         return filteredServiceOrders
           .filter((order) => order.status === "completed")
           .map((order) => ({
-            Data: order.created_at ? format(new Date(order.created_at), "dd/MM/yyyy", { locale: ptBR }) : "",
-            Cliente: order.customer_name || "",
-            Motocicleta: order.motorcycle_model || "",
-            Valor: formatCurrency(getNumericValue(order.total_amount)),
+            Data:
+              order.created_at || order.createdAt
+                ? format(new Date(order.created_at || order.createdAt), "dd/MM/yyyy", { locale: ptBR })
+                : "",
+            Cliente: order.customer_name || order.customerName || "",
+            Motocicleta: order.motorcycle_model || order.motorcycleModel || "",
+            Valor: formatCurrency(getNumericValue(order.total_amount || order.totalAmount)),
             Status: order.status,
           }))
       case "customers":
@@ -238,19 +265,22 @@ export default function ReportsPage() {
       case "inventory":
         return lowStockParts.map((part) => ({
           Nome: part.name,
-          Código: part.code || "",
+          Código: part.code || part.partNumber || "",
           Categoria: part.category || "",
-          "Estoque Atual": getNumericValue(part.quantity),
-          "Estoque Mínimo": getNumericValue(part.minimum_stock),
-          "Preço Custo": formatCurrency(getNumericValue(part.cost_price)),
+          "Estoque Atual": getNumericValue(part.quantity || part.stockQuantity),
+          "Estoque Mínimo": getNumericValue(part.minimum_stock || part.minStockLevel),
+          "Preço Custo": formatCurrency(getNumericValue(part.cost_price || part.costPrice)),
         }))
       case "services":
         return filteredServiceOrders.map((order) => ({
-          Data: order.created_at ? format(new Date(order.created_at), "dd/MM/yyyy", { locale: ptBR }) : "",
-          Cliente: order.customer_name || "",
+          Data:
+            order.created_at || order.createdAt
+              ? format(new Date(order.created_at || order.createdAt), "dd/MM/yyyy", { locale: ptBR })
+              : "",
+          Cliente: order.customer_name || order.customerName || "",
           Serviço: order.description || "",
           Status: order.status,
-          Valor: formatCurrency(getNumericValue(order.total_amount)),
+          Valor: formatCurrency(getNumericValue(order.total_amount || order.totalAmount)),
         }))
       default:
         return []
@@ -293,7 +323,7 @@ export default function ReportsPage() {
             onClick={() => exportToPDF(getReportData(), getReportTitle())}
             className="flex items-center gap-2"
           >
-            <FilePdf className="h-4 w-4" />
+            <FileDown className="h-4 w-4" />
             Exportar PDF
           </Button>
         </div>
@@ -308,9 +338,9 @@ export default function ReportsPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1">
-              <label className="text-sm font-medium mb-2 block">Tipo de Relatório</label>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label>Tipo de Relatório</Label>
               <Select value={reportType} onValueChange={setReportType}>
                 <SelectTrigger>
                   <SelectValue />
@@ -323,9 +353,13 @@ export default function ReportsPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex-1">
-              <label className="text-sm font-medium mb-2 block">Período</label>
-              <DatePickerWithRange date={dateRange} setDate={setDateRange} />
+            <div className="space-y-2">
+              <Label htmlFor="startDate">Data Inicial</Label>
+              <Input id="startDate" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="endDate">Data Final</Label>
+              <Input id="endDate" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
             </div>
           </div>
         </CardContent>

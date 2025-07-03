@@ -50,7 +50,7 @@ export default function InventoryPage() {
   const [partToDelete, setPartToDelete] = useState<Part | null>(null)
 
   const { success, error: showError } = useToast()
-  const { parts, loading, createPart, updatePart, deletePart, updatePartStock } = useParts()
+  const { parts, categories, loading, createPart, updatePart, deletePart, updatePartStock } = useParts()
 
   // Helper function to safely format currency
   const formatCurrency = (value: number | null | undefined) => {
@@ -71,21 +71,24 @@ export default function InventoryPage() {
     return Number(value)
   }
 
-  // Get unique categories
-  const categories = Array.from(new Set(parts.map((part) => part.category).filter(Boolean))).sort()
+  // Get unique categories from parts and categories
+  const allCategories = Array.from(
+    new Set([...categories.map((cat) => cat.name), ...parts.map((part) => part.category).filter(Boolean)]),
+  ).sort()
 
   // Filter parts
   const filteredParts = parts.filter((part) => {
     const matchesSearch =
       part.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       part.code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      part.partNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       part.description?.toLowerCase().includes(searchTerm.toLowerCase())
 
     const matchesCategory = categoryFilter === "all" || part.category === categoryFilter
 
     let matchesStock = true
-    const quantity = getNumericValue(part.quantity)
-    const minStock = getNumericValue(part.minimum_stock)
+    const quantity = getNumericValue(part.quantity || part.stockQuantity)
+    const minStock = getNumericValue(part.minimum_stock || part.minStockLevel)
 
     if (stockFilter === "low") {
       matchesStock = quantity <= minStock && quantity > 0
@@ -107,16 +110,16 @@ export default function InventoryPage() {
 
   // Calculate stats
   const lowStockCount = parts.filter((part) => {
-    const quantity = getNumericValue(part.quantity)
-    const minStock = getNumericValue(part.minimum_stock)
+    const quantity = getNumericValue(part.quantity || part.stockQuantity)
+    const minStock = getNumericValue(part.minimum_stock || part.minStockLevel)
     return quantity <= minStock && quantity > 0
   }).length
 
-  const outOfStockCount = parts.filter((part) => getNumericValue(part.quantity) === 0).length
+  const outOfStockCount = parts.filter((part) => getNumericValue(part.quantity || part.stockQuantity) === 0).length
 
   const totalValue = parts.reduce((sum, part) => {
-    const quantity = getNumericValue(part.quantity)
-    const costPrice = getNumericValue(part.cost_price)
+    const quantity = getNumericValue(part.quantity || part.stockQuantity)
+    const costPrice = getNumericValue(part.cost_price || part.costPrice)
     return sum + quantity * costPrice
   }, 0)
 
@@ -158,7 +161,7 @@ export default function InventoryPage() {
       const part = parts.find((p) => p.id === data.part_id)
       if (!part) return
 
-      const currentQuantity = getNumericValue(part.quantity)
+      const currentQuantity = getNumericValue(part.quantity || part.stockQuantity)
       const entryQuantity = getNumericValue(data.quantity)
       const newQuantity = data.type === "entry" ? currentQuantity + entryQuantity : currentQuantity - entryQuantity
 
@@ -287,7 +290,7 @@ export default function InventoryPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todas as categorias</SelectItem>
-                {categories.map((category) => (
+                {allCategories.map((category) => (
                   <SelectItem key={category} value={category}>
                     {category}
                   </SelectItem>
@@ -327,10 +330,10 @@ export default function InventoryPage() {
                   </TableRow>
                 ) : (
                   paginatedParts.map((part) => {
-                    const quantity = getNumericValue(part.quantity)
-                    const minStock = getNumericValue(part.minimum_stock)
-                    const costPrice = getNumericValue(part.cost_price)
-                    const salePrice = getNumericValue(part.sale_price)
+                    const quantity = getNumericValue(part.quantity || part.stockQuantity)
+                    const minStock = getNumericValue(part.minimum_stock || part.minStockLevel)
+                    const costPrice = getNumericValue(part.cost_price || part.costPrice)
+                    const salePrice = getNumericValue(part.sale_price || part.salePrice)
 
                     const isLowStock = quantity <= minStock && quantity > 0
                     const isOutOfStock = quantity === 0
@@ -344,7 +347,7 @@ export default function InventoryPage() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <code className="text-sm">{part.code || "N/A"}</code>
+                          <code className="text-sm">{part.code || part.partNumber || "N/A"}</code>
                         </TableCell>
                         <TableCell>{part.category || "Sem categoria"}</TableCell>
                         <TableCell>

@@ -24,16 +24,67 @@ export function useParts() {
       setError(null)
       console.log("🔄 Carregando peças...")
 
-      const [partsData, categoriesData] = await Promise.all([
-        partUseCases.getAllParts(),
-        partUseCases.getAllCategories(),
-      ])
+      // Buscar peças com join das categorias
+      const { data: partsData, error: partsError } = await supabase
+        .from("parts")
+        .select(`
+          *,
+          part_categories(name)
+        `)
+        .order("name")
 
-      console.log("✅ Peças carregadas:", partsData.length)
-      console.log("✅ Categorias carregadas:", categoriesData.length)
+      if (partsError) {
+        throw new Error(`Failed to fetch parts: ${partsError.message}`)
+      }
 
-      setParts(partsData)
-      setCategories(categoriesData)
+      // Mapear os dados corretamente
+      const mappedParts: Part[] = partsData.map((data: any) => ({
+        id: data.id,
+        categoryId: data.category_id,
+        name: data.name,
+        description: data.description,
+        partNumber: data.part_number,
+        code: data.part_number || data.code,
+        brand: data.brand,
+        costPrice: Number.parseFloat(data.cost_price) || 0,
+        cost_price: Number.parseFloat(data.cost_price) || 0,
+        salePrice: Number.parseFloat(data.sale_price) || 0,
+        sale_price: Number.parseFloat(data.sale_price) || 0,
+        stockQuantity: data.stock_quantity || 0,
+        quantity: data.stock_quantity || 0,
+        minStockLevel: data.min_stock_level || 0,
+        minimum_stock: data.min_stock_level || 0,
+        location: data.location,
+        unit: data.unit || "un",
+        category: data.part_categories?.name || "Sem categoria",
+        createdAt: new Date(data.created_at),
+        updatedAt: new Date(data.updated_at),
+      }))
+
+      // Buscar categorias
+      const { data: categoriesData, error: categoriesError } = await supabase
+        .from("part_categories")
+        .select("*")
+        .order("name")
+
+      if (categoriesError) {
+        console.warn("Erro ao carregar categorias:", categoriesError.message)
+      }
+
+      const mappedCategories: PartCategory[] =
+        categoriesData?.map((data: any) => ({
+          id: data.id,
+          name: data.name,
+          description: data.description,
+          createdAt: new Date(data.created_at),
+        })) || []
+
+      console.log("✅ Peças carregadas:", mappedParts.length)
+      console.log("✅ Categorias carregadas:", mappedCategories.length)
+      console.log("📊 Dados das peças:", mappedParts.slice(0, 2)) // Log das primeiras 2 peças para debug
+
+      setParts(mappedParts)
+      setCategories(mappedCategories)
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to fetch parts"
       console.error("❌ Erro ao carregar peças:", errorMessage)
@@ -102,7 +153,6 @@ export function useParts() {
 
       const updatedPart = await partUseCases.updatePart({
         id,
-        quantity: newQuantity,
         stockQuantity: newQuantity,
       })
 

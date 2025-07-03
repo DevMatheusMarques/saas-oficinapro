@@ -191,12 +191,19 @@ export class SupabasePartRepository implements PartRepository {
       name: data.name,
       description: data.description,
       partNumber: data.part_number,
+      code: data.part_number || data.code, // Fallback para compatibilidade
       brand: data.brand,
       costPrice: Number.parseFloat(data.cost_price) || 0,
+      cost_price: Number.parseFloat(data.cost_price) || 0, // Compatibilidade
       salePrice: Number.parseFloat(data.sale_price) || 0,
+      sale_price: Number.parseFloat(data.sale_price) || 0, // Compatibilidade
       stockQuantity: data.stock_quantity || 0,
+      quantity: data.stock_quantity || 0, // Compatibilidade
       minStockLevel: data.min_stock_level || 0,
+      minimum_stock: data.min_stock_level || 0, // Compatibilidade
       location: data.location,
+      unit: data.unit || "un",
+      category: data.category || "Sem categoria", // Valor padrão
       createdAt: new Date(data.created_at),
       updatedAt: new Date(data.updated_at),
     }
