@@ -1,140 +1,193 @@
 "use client"
 
-import type React from "react"
-
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useToast } from "@/hooks/use-toast"
+import { useParts } from "@/hooks/use-parts"
+
+const stockEntrySchema = z.object({
+  part_id: z.string().min(1, "Peça é obrigatória"),
+  quantity: z.number().min(1, "Quantidade deve ser maior que 0"),
+  type: z.enum(["entry", "exit"], { required_error: "Tipo é obrigatório" }),
+  reason: z.string().min(1, "Motivo é obrigatório"),
+  notes: z.string().optional(),
+})
+
+type StockEntryFormData = z.infer<typeof stockEntrySchema>
 
 interface StockEntryFormProps {
-  parts: any[]
-  onSubmit: (data: any) => void
-  onCancel: () => void
+  isOpen: boolean
+  onClose: () => void
+  onSubmit: (data: StockEntryFormData) => Promise<void>
+  preSelectedPartId?: string
 }
 
-export function StockEntryForm({ parts, onSubmit, onCancel }: StockEntryFormProps) {
-  const [formData, setFormData] = useState({
-    partId: "",
-    quantity: "",
-    unitCost: "",
-    supplier: "",
-    invoiceNumber: "",
-    notes: "",
+const entryReasons = ["Compra", "Devolução", "Ajuste de inventário", "Transferência", "Outros"]
+
+const exitReasons = ["Venda", "Uso em serviço", "Perda", "Devolução ao fornecedor", "Transferência", "Outros"]
+
+export function StockEntryForm({ isOpen, onClose, onSubmit, preSelectedPartId }: StockEntryFormProps) {
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const { toast } = useToast()
+  const { parts, loading: partsLoading } = useParts()
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    setValue,
+    watch,
+    formState: { errors },
+  } = useForm<StockEntryFormData>({
+    resolver: zodResolver(stockEntrySchema),
+    defaultValues: {
+      part_id: preSelectedPartId || "",
+      quantity: 1,
+      type: "entry",
+      reason: "",
+      notes: "",
+    },
   })
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    onSubmit({
-      ...formData,
-      quantity: Number.parseInt(formData.quantity) || 0,
-      unitCost: Number.parseFloat(formData.unitCost) || 0,
-    })
+  const selectedPartId = watch("part_id")
+  const selectedType = watch("type")
+  const selectedReason = watch("reason")
+
+  const selectedPart = parts.find((part) => part.id === selectedPartId)
+  const availableReasons = selectedType === "entry" ? entryReasons : exitReasons
+
+  useEffect(() => {
+    if (preSelectedPartId) {
+      setValue("part_id", preSelectedPartId)
+    }
+  }, [preSelectedPartId, setValue])
+
+  useEffect(() => {
+    // Reset reason when type changes
+    setValue("reason", "")
+  }, [selectedType, setValue])
+
+  const handleFormSubmit = async (data: StockEntryFormData) => {
+    setIsSubmitting(true)
+    try {
+      await onSubmit(data)
+      toast({
+        title: "Sucesso",
+        description: `${data.type === "entry" ? "Entrada" : "Saída"} de estoque registrada com sucesso!`,
+      })
+      reset()
+      onClose()
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Ocorreu um erro ao registrar a movimentação.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
-  const selectedPart = parts.find((p) => p.id === formData.partId)
-
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="partId">Peça *</Label>
-        <Select value={formData.partId} onValueChange={(value) => setFormData({ ...formData, partId: value })}>
-          <SelectTrigger>
-            <SelectValue placeholder="Selecione uma peça" />
-          </SelectTrigger>
-          <SelectContent>
-            {parts.map((part) => (
-              <SelectItem key={part.id} value={part.id}>
-                {part.name} {part.partNumber && `(${part.partNumber})`}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Movimentação de Estoque</DialogTitle>
+        </DialogHeader>
 
-      {selectedPart && (
-        <div className="p-3 bg-muted rounded-lg">
-          <p className="text-sm">
-            <strong>Estoque atual:</strong> {selectedPart.stockQuantity} unidades
-          </p>
-          <p className="text-sm">
-            <strong>Último preço de custo:</strong>{" "}
-            {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedPart.costPrice)}
-          </p>
-        </div>
-      )}
+        <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-4">
+          <div className="space-y-2">
+            <Label>Peça *</Label>
+            <Select
+              value={selectedPartId}
+              onValueChange={(value) => setValue("part_id", value)}
+              disabled={partsLoading}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione a peça" />
+              </SelectTrigger>
+              <SelectContent>
+                {parts.map((part) => (
+                  <SelectItem key={part.id} value={part.id}>
+                    {part.name} - {part.code} (Estoque: {part.quantity})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {errors.part_id && <p className="text-sm text-red-600">{errors.part_id.message}</p>}
+          </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="space-y-2">
-          <Label htmlFor="quantity">Quantidade *</Label>
-          <Input
-            id="quantity"
-            type="number"
-            value={formData.quantity}
-            onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
-            required
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="unitCost">Custo Unitário *</Label>
-          <Input
-            id="unitCost"
-            type="number"
-            step="0.01"
-            value={formData.unitCost}
-            onChange={(e) => setFormData({ ...formData, unitCost: e.target.value })}
-            required
-          />
-        </div>
-      </div>
+          {selectedPart && (
+            <div className="p-3 bg-gray-50 rounded-md">
+              <p className="text-sm">
+                <strong>Estoque atual:</strong> {selectedPart.quantity} {selectedPart.unit}
+              </p>
+              <p className="text-sm">
+                <strong>Estoque mínimo:</strong> {selectedPart.minimum_stock} {selectedPart.unit}
+              </p>
+            </div>
+          )}
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="space-y-2">
-          <Label htmlFor="supplier">Fornecedor</Label>
-          <Input
-            id="supplier"
-            value={formData.supplier}
-            onChange={(e) => setFormData({ ...formData, supplier: e.target.value })}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="invoiceNumber">Número da Nota</Label>
-          <Input
-            id="invoiceNumber"
-            value={formData.invoiceNumber}
-            onChange={(e) => setFormData({ ...formData, invoiceNumber: e.target.value })}
-          />
-        </div>
-      </div>
+          <div className="space-y-2">
+            <Label>Tipo de Movimentação *</Label>
+            <Select value={selectedType} onValueChange={(value: "entry" | "exit") => setValue("type", value)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="entry">Entrada</SelectItem>
+                <SelectItem value="exit">Saída</SelectItem>
+              </SelectContent>
+            </Select>
+            {errors.type && <p className="text-sm text-red-600">{errors.type.message}</p>}
+          </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="notes">Observações</Label>
-        <Textarea
-          id="notes"
-          value={formData.notes}
-          onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-        />
-      </div>
+          <div className="space-y-2">
+            <Label htmlFor="quantity">Quantidade *</Label>
+            <Input id="quantity" type="number" min="1" step="1" {...register("quantity", { valueAsNumber: true })} />
+            {errors.quantity && <p className="text-sm text-red-600">{errors.quantity.message}</p>}
+          </div>
 
-      {formData.quantity && formData.unitCost && (
-        <div className="p-3 bg-muted rounded-lg">
-          <p className="text-sm font-medium">
-            <strong>Total da entrada:</strong>{" "}
-            {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
-              Number.parseInt(formData.quantity) * Number.parseFloat(formData.unitCost),
-            )}
-          </p>
-        </div>
-      )}
+          <div className="space-y-2">
+            <Label>Motivo *</Label>
+            <Select value={selectedReason} onValueChange={(value) => setValue("reason", value)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione o motivo" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableReasons.map((reason) => (
+                  <SelectItem key={reason} value={reason}>
+                    {reason}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {errors.reason && <p className="text-sm text-red-600">{errors.reason.message}</p>}
+          </div>
 
-      <div className="flex justify-end space-x-2">
-        <Button type="button" variant="outline" onClick={onCancel}>
-          Cancelar
-        </Button>
-        <Button type="submit">Registrar Entrada</Button>
-      </div>
-    </form>
+          <div className="space-y-2">
+            <Label htmlFor="notes">Observações</Label>
+            <Textarea id="notes" {...register("notes")} placeholder="Observações adicionais..." rows={3} />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Registrando..." : "Registrar"}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }

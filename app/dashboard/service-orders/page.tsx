@@ -1,123 +1,73 @@
 "use client"
 
 import { useState } from "react"
-import { DashboardLayout } from "@/components/layout/dashboard-layout"
+import { Plus, Search, Eye, Edit, Trash2, Filter } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination"
-import {
-  Plus,
-  Wrench,
-  Clock,
-  CheckCircle,
-  AlertTriangle,
-  Pause,
-  Search,
-  MoreHorizontal,
-  Eye,
-  Edit,
-  Trash2,
-  Play,
-  Package,
-} from "lucide-react"
-import { useServiceOrders } from "@/hooks/use-service-orders"
-import { useCustomers } from "@/hooks/use-customers"
-import { useMotorcycles } from "@/hooks/use-motorcycles"
-import { usePagination } from "@/hooks/use-pagination"
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { ServiceOrderForm } from "@/components/forms/service-order-form"
 import { ServiceOrderDetailsModal } from "@/components/modals/service-order-details-modal"
+import { Pagination } from "@/components/ui/pagination"
+import { useServiceOrders } from "@/hooks/use-service-orders"
+import { usePagination } from "@/hooks/use-pagination"
+import type { ServiceOrder } from "@/domain/entities/service-order"
+import { format } from "date-fns"
+import { ptBR } from "date-fns/locale"
+import { useToast } from "@/hooks/use-toast"
+
+const statusColors = {
+  pending: "bg-yellow-100 text-yellow-800",
+  in_progress: "bg-blue-100 text-blue-800",
+  completed: "bg-green-100 text-green-800",
+  cancelled: "bg-red-100 text-red-800",
+}
+
+const statusLabels = {
+  pending: "Pendente",
+  in_progress: "Em Andamento",
+  completed: "Concluída",
+  cancelled: "Cancelada",
+}
 
 export default function ServiceOrdersPage() {
+  const [searchTerm, setSearchTerm] = useState("")
+  const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [isFormOpen, setIsFormOpen] = useState(false)
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false)
+  const [selectedServiceOrder, setSelectedServiceOrder] = useState<ServiceOrder | null>(null)
+  const [serviceOrderToDelete, setServiceOrderToDelete] = useState<ServiceOrder | null>(null)
+
+  const { toast } = useToast()
   const {
     serviceOrders,
     loading,
     createServiceOrder,
     updateServiceOrder,
     deleteServiceOrder,
-    startServiceOrder,
-    completeServiceOrder,
-    deliverServiceOrder,
+    updateServiceOrderStatus,
   } = useServiceOrders()
-  const { customers } = useCustomers()
-  const { motorcycles } = useMotorcycles()
-  const [searchTerm, setSearchTerm] = useState("")
-  const [selectedStatus, setSelectedStatus] = useState<string>("all")
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
-  const [selectedServiceOrder, setSelectedServiceOrder] = useState<any>(null)
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
-  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false)
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "open":
-        return (
-          <Badge variant="outline">
-            <Clock className="h-3 w-3 mr-1" />
-            Aberta
-          </Badge>
-        )
-      case "in_progress":
-        return (
-          <Badge>
-            <Wrench className="h-3 w-3 mr-1" />
-            Em Andamento
-          </Badge>
-        )
-      case "waiting_parts":
-        return (
-          <Badge variant="outline">
-            <Pause className="h-3 w-3 mr-1" />
-            Aguardando Peças
-          </Badge>
-        )
-      case "completed":
-        return (
-          <Badge>
-            <CheckCircle className="h-3 w-3 mr-1" />
-            Concluída
-          </Badge>
-        )
-      case "delivered":
-        return (
-          <Badge>
-            <CheckCircle className="h-3 w-3 mr-1" />
-            Entregue
-          </Badge>
-        )
-      default:
-        return <Badge variant="outline">{status}</Badge>
-    }
-  }
-
-  const filteredServiceOrders = serviceOrders.filter((order) => {
-    const customer = customers.find((c) => c.id === order.customerId)
-    const motorcycle = motorcycles.find((m) => m.id === order.motorcycleId)
-
+  // Filter service orders
+  const filteredServiceOrders = serviceOrders.filter((serviceOrder) => {
     const matchesSearch =
-      order.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customer?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      `${motorcycle?.brand} ${motorcycle?.model}`.toLowerCase().includes(searchTerm.toLowerCase())
+      serviceOrder.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      serviceOrder.motorcycle_model.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      serviceOrder.motorcycle_plate.toLowerCase().includes(searchTerm.toLowerCase())
 
-    const matchesStatus = selectedStatus === "all" || order.status === selectedStatus
+    const matchesStatus = statusFilter === "all" || serviceOrder.status === statusFilter
 
     return matchesSearch && matchesStatus
   })
@@ -125,336 +75,256 @@ export default function ServiceOrdersPage() {
   const {
     currentPage,
     totalPages,
-    paginatedData,
+    paginatedItems: paginatedServiceOrders,
     goToPage,
     goToNextPage,
     goToPreviousPage,
-    hasNextPage,
-    hasPreviousPage,
-    startIndex,
-    endIndex,
-    totalItems,
-  } = usePagination({ data: filteredServiceOrders, itemsPerPage: 10 })
+  } = usePagination(filteredServiceOrders, 10)
 
   const handleCreateServiceOrder = async (data: any) => {
-    const result = await createServiceOrder(data)
-    if (result) {
-      setIsCreateModalOpen(false)
-    }
+    await createServiceOrder(data)
+    setIsFormOpen(false)
   }
 
   const handleUpdateServiceOrder = async (data: any) => {
     if (selectedServiceOrder) {
-      const result = await updateServiceOrder(selectedServiceOrder.id, data)
-      if (result) {
-        setIsEditModalOpen(false)
-        setSelectedServiceOrder(null)
+      await updateServiceOrder(selectedServiceOrder.id, data)
+      setSelectedServiceOrder(null)
+      setIsFormOpen(false)
+      setIsDetailsOpen(false)
+    }
+  }
+
+  const handleDeleteServiceOrder = async () => {
+    if (serviceOrderToDelete) {
+      try {
+        await deleteServiceOrder(serviceOrderToDelete.id)
+        toast({
+          title: "Sucesso",
+          description: "Ordem de serviço excluída com sucesso!",
+        })
+      } catch (error) {
+        toast({
+          title: "Erro",
+          description: "Erro ao excluir ordem de serviço.",
+          variant: "destructive",
+        })
+      } finally {
+        setServiceOrderToDelete(null)
       }
     }
   }
 
-  const handleDeleteServiceOrder = async (id: string) => {
-    if (confirm("Tem certeza que deseja excluir esta ordem de serviço?")) {
-      await deleteServiceOrder(id)
+  const handleStatusChange = async (serviceOrderId: string, newStatus: string) => {
+    try {
+      await updateServiceOrderStatus(serviceOrderId, newStatus as any)
+      toast({
+        title: "Sucesso",
+        description: "Status atualizado com sucesso!",
+      })
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Erro ao atualizar status.",
+        variant: "destructive",
+      })
     }
   }
 
-  const handleStartServiceOrder = async (id: string) => {
-    if (confirm("Tem certeza que deseja iniciar esta ordem de serviço?")) {
-      await startServiceOrder(id)
-    }
+  const handleViewDetails = (serviceOrder: ServiceOrder) => {
+    setSelectedServiceOrder(serviceOrder)
+    setIsDetailsOpen(true)
   }
 
-  const handleCompleteServiceOrder = async (id: string) => {
-    if (confirm("Tem certeza que deseja concluir esta ordem de serviço?")) {
-      await completeServiceOrder(id)
-    }
+  const handleEditServiceOrder = (serviceOrder: ServiceOrder) => {
+    setSelectedServiceOrder(serviceOrder)
+    setIsFormOpen(true)
   }
 
-  const handleDeliverServiceOrder = async (id: string) => {
-    if (confirm("Tem certeza que deseja marcar como entregue?")) {
-      await deliverServiceOrder(id)
-    }
+  const handleEditFromDetails = (serviceOrder: ServiceOrder) => {
+    setIsDetailsOpen(false)
+    setIsFormOpen(true)
   }
 
-  const handleViewDetails = (order: any) => {
-    setSelectedServiceOrder(order)
-    setIsDetailsModalOpen(true)
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+      </div>
+    )
   }
-
-  const inProgressOrders = serviceOrders.filter((o) => o.status === "in_progress").length
-  const waitingPartsOrders = serviceOrders.filter((o) => o.status === "waiting_parts").length
-  const completedOrders = serviceOrders.filter((o) => o.status === "completed").length
 
   return (
-    <DashboardLayout>
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Ordens de Serviço</h1>
-            <p className="text-muted-foreground">Gerencie as ordens de serviço em andamento</p>
-          </div>
-          <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                Nova OS
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>Criar Nova Ordem de Serviço</DialogTitle>
-                <DialogDescription>Preencha os dados para criar uma nova ordem de serviço</DialogDescription>
-              </DialogHeader>
-              <ServiceOrderForm
-                customers={customers}
-                motorcycles={motorcycles}
-                onSubmit={handleCreateServiceOrder}
-                onCancel={() => setIsCreateModalOpen(false)}
-              />
-            </DialogContent>
-          </Dialog>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Ordens de Serviço</h1>
+          <p className="text-muted-foreground">Gerencie as ordens de serviço da oficina</p>
         </div>
-
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total de OS</CardTitle>
-              <Wrench className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{serviceOrders.length}</div>
-              <p className="text-xs text-muted-foreground">Ordens criadas</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Em Andamento</CardTitle>
-              <Clock className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{inProgressOrders}</div>
-              <p className="text-xs text-muted-foreground">Sendo executadas</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Aguardando Peças</CardTitle>
-              <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{waitingPartsOrders}</div>
-              <p className="text-xs text-muted-foreground">Pendentes de peças</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Concluídas</CardTitle>
-              <CheckCircle className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{completedOrders}</div>
-              <p className="text-xs text-muted-foreground">Finalizadas</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Lista de Ordens de Serviço</CardTitle>
-            <CardDescription>
-              Mostrando {startIndex} a {endIndex} de {totalItems} ordens de serviço
-            </CardDescription>
-            <div className="flex items-center space-x-2">
-              <div className="relative flex-1 max-w-sm">
-                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar ordens..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-8"
-                />
-              </div>
-              <select
-                value={selectedStatus}
-                onChange={(e) => setSelectedStatus(e.target.value)}
-                className="px-3 py-2 border rounded-md"
-              >
-                <option value="all">Todos os Status</option>
-                <option value="open">Aberta</option>
-                <option value="in_progress">Em Andamento</option>
-                <option value="waiting_parts">Aguardando Peças</option>
-                <option value="completed">Concluída</option>
-                <option value="delivered">Entregue</option>
-              </select>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="space-y-2">
-                {[...Array(5)].map((_, i) => (
-                  <div key={i} className="h-12 bg-gray-200 rounded animate-pulse"></div>
-                ))}
-              </div>
-            ) : (
-              <>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Número</TableHead>
-                      <TableHead>Cliente</TableHead>
-                      <TableHead>Moto</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Início</TableHead>
-                      <TableHead>Previsão</TableHead>
-                      <TableHead className="text-right">Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {paginatedData.map((order) => {
-                      const customer = customers.find((c) => c.id === order.customerId)
-                      const motorcycle = motorcycles.find((m) => m.id === order.motorcycleId)
-
-                      return (
-                        <TableRow key={order.id}>
-                          <TableCell className="font-medium">{order.orderNumber}</TableCell>
-                          <TableCell>{customer?.name || "Cliente não encontrado"}</TableCell>
-                          <TableCell>
-                            {motorcycle ? `${motorcycle.brand} ${motorcycle.model}` : "Moto não encontrada"}
-                          </TableCell>
-                          <TableCell>{getStatusBadge(order.status)}</TableCell>
-                          <TableCell>{order.startDate ? order.startDate.toLocaleDateString("pt-BR") : "-"}</TableCell>
-                          <TableCell>
-                            {order.estimatedCompletion ? order.estimatedCompletion.toLocaleDateString("pt-BR") : "-"}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" className="h-8 w-8 p-0">
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => handleViewDetails(order)}>
-                                  <Eye className="mr-2 h-4 w-4" />
-                                  Ver Detalhes
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    setSelectedServiceOrder(order)
-                                    setIsEditModalOpen(true)
-                                  }}
-                                >
-                                  <Edit className="mr-2 h-4 w-4" />
-                                  Editar
-                                </DropdownMenuItem>
-                                {order.status === "open" && (
-                                  <DropdownMenuItem onClick={() => handleStartServiceOrder(order.id)}>
-                                    <Play className="mr-2 h-4 w-4" />
-                                    Iniciar
-                                  </DropdownMenuItem>
-                                )}
-                                {(order.status === "in_progress" || order.status === "waiting_parts") && (
-                                  <DropdownMenuItem onClick={() => handleCompleteServiceOrder(order.id)}>
-                                    <CheckCircle className="mr-2 h-4 w-4" />
-                                    Concluir
-                                  </DropdownMenuItem>
-                                )}
-                                {order.status === "completed" && (
-                                  <DropdownMenuItem onClick={() => handleDeliverServiceOrder(order.id)}>
-                                    <Package className="mr-2 h-4 w-4" />
-                                    Entregar
-                                  </DropdownMenuItem>
-                                )}
-                                <DropdownMenuItem
-                                  onClick={() => handleDeleteServiceOrder(order.id)}
-                                  className="text-red-600"
-                                >
-                                  <Trash2 className="mr-2 h-4 w-4" />
-                                  Excluir
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
-
-                {totalPages > 1 && (
-                  <div className="mt-4">
-                    <Pagination>
-                      <PaginationContent>
-                        <PaginationItem>
-                          <PaginationPrevious
-                            onClick={goToPreviousPage}
-                            className={!hasPreviousPage ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                          />
-                        </PaginationItem>
-                        {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                          <PaginationItem key={page}>
-                            <PaginationLink
-                              onClick={() => goToPage(page)}
-                              isActive={currentPage === page}
-                              className="cursor-pointer"
-                            >
-                              {page}
-                            </PaginationLink>
-                          </PaginationItem>
-                        ))}
-                        <PaginationItem>
-                          <PaginationNext
-                            onClick={goToNextPage}
-                            className={!hasNextPage ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                          />
-                        </PaginationItem>
-                      </PaginationContent>
-                    </Pagination>
-                  </div>
-                )}
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Edit Modal */}
-        <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Editar Ordem de Serviço</DialogTitle>
-              <DialogDescription>Edite os dados da ordem de serviço selecionada</DialogDescription>
-            </DialogHeader>
-            {selectedServiceOrder && (
-              <ServiceOrderForm
-                customers={customers}
-                motorcycles={motorcycles}
-                initialData={selectedServiceOrder}
-                onSubmit={handleUpdateServiceOrder}
-                onCancel={() => {
-                  setIsEditModalOpen(false)
-                  setSelectedServiceOrder(null)
-                }}
-              />
-            )}
-          </DialogContent>
-        </Dialog>
-
-        {/* Details Modal */}
-        <ServiceOrderDetailsModal
-          isOpen={isDetailsModalOpen}
-          onClose={() => {
-            setIsDetailsModalOpen(false)
-            setSelectedServiceOrder(null)
-          }}
-          serviceOrder={selectedServiceOrder}
-          customer={selectedServiceOrder ? customers.find((c) => c.id === selectedServiceOrder.customerId) : null}
-          motorcycle={selectedServiceOrder ? motorcycles.find((m) => m.id === selectedServiceOrder.motorcycleId) : null}
-        />
+        <Button onClick={() => setIsFormOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" />
+          Nova Ordem
+        </Button>
       </div>
-    </DashboardLayout>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Lista de Ordens de Serviço</CardTitle>
+          <CardDescription>{filteredServiceOrders.length} ordem(ns) encontrada(s)</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-4 mb-6">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+              <Input
+                placeholder="Buscar por cliente, modelo ou placa..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-48">
+                <Filter className="mr-2 h-4 w-4" />
+                <SelectValue placeholder="Filtrar por status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os status</SelectItem>
+                <SelectItem value="pending">Pendente</SelectItem>
+                <SelectItem value="in_progress">Em Andamento</SelectItem>
+                <SelectItem value="completed">Concluída</SelectItem>
+                <SelectItem value="cancelled">Cancelada</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead>Motocicleta</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Data</TableHead>
+                  <TableHead>Valor</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paginatedServiceOrders.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-8">
+                      Nenhuma ordem de serviço encontrada
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  paginatedServiceOrders.map((serviceOrder) => (
+                    <TableRow key={serviceOrder.id}>
+                      <TableCell>
+                        <div>
+                          <p className="font-medium">{serviceOrder.customer_name}</p>
+                          <p className="text-sm text-gray-500">{serviceOrder.customer_email}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div>
+                          <p className="font-medium">{serviceOrder.motorcycle_model}</p>
+                          <p className="text-sm text-gray-500">{serviceOrder.motorcycle_plate}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Select
+                          value={serviceOrder.status}
+                          onValueChange={(value) => handleStatusChange(serviceOrder.id, value)}
+                        >
+                          <SelectTrigger className="w-32">
+                            <Badge className={statusColors[serviceOrder.status]}>
+                              {statusLabels[serviceOrder.status]}
+                            </Badge>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="pending">Pendente</SelectItem>
+                            <SelectItem value="in_progress">Em Andamento</SelectItem>
+                            <SelectItem value="completed">Concluída</SelectItem>
+                            <SelectItem value="cancelled">Cancelada</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>{format(new Date(serviceOrder.created_at), "dd/MM/yyyy", { locale: ptBR })}</TableCell>
+                      <TableCell>
+                        {new Intl.NumberFormat("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                        }).format(serviceOrder.total_amount)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button variant="ghost" size="sm" onClick={() => handleViewDetails(serviceOrder)}>
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => handleEditServiceOrder(serviceOrder)}>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => setServiceOrderToDelete(serviceOrder)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          {totalPages > 1 && (
+            <div className="mt-4">
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={goToPage}
+                onPreviousPage={goToPreviousPage}
+                onNextPage={goToNextPage}
+              />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <ServiceOrderForm
+        serviceOrder={selectedServiceOrder}
+        isOpen={isFormOpen}
+        onClose={() => {
+          setIsFormOpen(false)
+          setSelectedServiceOrder(null)
+        }}
+        onSubmit={selectedServiceOrder ? handleUpdateServiceOrder : handleCreateServiceOrder}
+      />
+
+      <ServiceOrderDetailsModal
+        serviceOrder={selectedServiceOrder}
+        isOpen={isDetailsOpen}
+        onClose={() => {
+          setIsDetailsOpen(false)
+          setSelectedServiceOrder(null)
+        }}
+        onEdit={handleEditFromDetails}
+      />
+
+      <AlertDialog open={!!serviceOrderToDelete} onOpenChange={() => setServiceOrderToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir esta ordem de serviço? Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteServiceOrder}>Excluir</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
   )
 }

@@ -1,75 +1,100 @@
 "use client"
 
-import { Calendar, Car, DollarSign, FileText, Home, Package, Settings, Users, Wrench, User, LogOut } from "lucide-react"
-import Link from "next/link"
-import { usePathname } from "next/navigation"
+import type * as React from "react"
+import { useAuth } from "@/contexts/auth-context"
+import { useSettings } from "@/contexts/settings-context"
+import {
+  BarChart3,
+  Calculator,
+  Car,
+  DollarSign,
+  Home,
+  Package,
+  Settings,
+  Users,
+  Wrench,
+  LogOut,
+  User,
+  ChevronUp,
+} from "lucide-react"
 
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
+  SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
-  SidebarHeader,
-  SidebarFooter,
 } from "@/components/ui/sidebar"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { useAuth } from "@/contexts/auth-context"
-import { useSettings } from "@/contexts/settings-context"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 
-const menuItems = [
-  {
-    title: "Dashboard",
-    url: "/dashboard",
-    icon: Home,
-  },
-  {
-    title: "Clientes",
-    url: "/dashboard/customers",
-    icon: Users,
-  },
-  {
-    title: "Motos",
-    url: "/dashboard/motorcycles",
-    icon: Car,
-  },
-  {
-    title: "Orçamentos",
-    url: "/dashboard/budgets",
-    icon: FileText,
-  },
-  {
-    title: "Ordens de Serviço",
-    url: "/dashboard/service-orders",
-    icon: Wrench,
-  },
-  {
-    title: "Estoque",
-    url: "/dashboard/inventory",
-    icon: Package,
-  },
-  {
-    title: "Financeiro",
-    url: "/dashboard/financial",
-    icon: DollarSign,
-  },
-  {
-    title: "Relatórios",
-    url: "/dashboard/reports",
-    icon: Calendar,
-  },
-  {
-    title: "Configurações",
-    url: "/dashboard/settings",
-    icon: Settings,
-  },
-]
+const data = {
+  navMain: [
+    {
+      title: "Dashboard",
+      url: "/dashboard",
+      icon: Home,
+    },
+    {
+      title: "Clientes",
+      url: "/dashboard/customers",
+      icon: Users,
+    },
+    {
+      title: "Motocicletas",
+      url: "/dashboard/motorcycles",
+      icon: Car,
+    },
+    {
+      title: "Orçamentos",
+      url: "/dashboard/budgets",
+      icon: Calculator,
+    },
+    {
+      title: "Ordens de Serviço",
+      url: "/dashboard/service-orders",
+      icon: Wrench,
+    },
+    {
+      title: "Estoque",
+      url: "/dashboard/inventory",
+      icon: Package,
+    },
+    {
+      title: "Financeiro",
+      url: "/dashboard/financial",
+      icon: DollarSign,
+    },
+    {
+      title: "Relatórios",
+      url: "/dashboard/reports",
+      icon: BarChart3,
+    },
+  ],
+  navSecondary: [
+    {
+      title: "Configurações",
+      url: "/dashboard/settings",
+      icon: Settings,
+    },
+  ],
+}
 
-export function AppSidebar() {
+export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
   const { user, signOut } = useAuth()
   const { companySettings } = useSettings()
@@ -82,29 +107,48 @@ export function AppSidebar() {
     }
   }
 
+  const getUserInitials = (email: string) => {
+    return email.substring(0, 2).toUpperCase()
+  }
+
   return (
-    <Sidebar>
+    <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        <div className="flex items-center gap-2 px-4 py-2">
-          <div className="p-2 bg-blue-600 rounded-lg">
-            <Wrench className="h-6 w-6 text-white" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold">OficinaPro</h2>
-            <p className="text-sm text-muted-foreground">{companySettings.name || "Sistema de Gestão"}</p>
-          </div>
+        <div className="flex flex-col items-start px-2 py-2">
+          <h1 className="text-lg font-bold text-sidebar-foreground group-data-[collapsible=icon]:hidden">OficinaPro</h1>
+          <p className="text-xs text-sidebar-foreground/70 group-data-[collapsible=icon]:hidden">
+            {companySettings.name || "Sua Oficina"}
+          </p>
         </div>
       </SidebarHeader>
+
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel>Menu Principal</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {menuItems.map((item) => (
+              {data.navMain.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild isActive={pathname === item.url}>
                     <Link href={item.url}>
-                      <item.icon className="h-4 w-4" />
+                      <item.icon />
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {data.navSecondary.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton asChild isActive={pathname === item.url}>
+                    <Link href={item.url}>
+                      <item.icon />
                       <span>{item.title}</span>
                     </Link>
                   </SidebarMenuButton>
@@ -114,24 +158,50 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <SidebarMenuButton>
-                  <User className="h-4 w-4" />
-                  <span>{user?.user_metadata?.full_name || user?.email || "Usuário"}</span>
+                <SidebarMenuButton
+                  size="lg"
+                  className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                >
+                  <Avatar className="h-8 w-8 rounded-lg">
+                    <AvatarFallback className="rounded-lg">
+                      {user?.email ? getUserInitials(user.email) : "U"}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="grid flex-1 text-left text-sm leading-tight">
+                    <span className="truncate font-semibold">
+                      {user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Usuário"}
+                    </span>
+                    <span className="truncate text-xs">{user?.email || "email@exemplo.com"}</span>
+                  </div>
+                  <ChevronUp className="ml-auto size-4" />
                 </SidebarMenuButton>
               </DropdownMenuTrigger>
-              <DropdownMenuContent side="top" className="w-[--radix-popper-anchor-width]">
+              <DropdownMenuContent
+                className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
+                side="bottom"
+                align="end"
+                sideOffset={4}
+              >
                 <DropdownMenuItem asChild>
-                  <Link href="/dashboard/settings">
+                  <Link href="/dashboard/settings" className="flex items-center">
+                    <User className="mr-2 h-4 w-4" />
+                    Perfil
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/dashboard/settings" className="flex items-center">
                     <Settings className="mr-2 h-4 w-4" />
                     Configurações
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleSignOut}>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleSignOut} className="flex items-center">
                   <LogOut className="mr-2 h-4 w-4" />
                   Sair
                 </DropdownMenuItem>

@@ -1,218 +1,180 @@
 "use client"
-
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import type { ServiceOrder } from "@/domain/entities/service-order"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Separator } from "@/components/ui/separator"
-import { Clock, User, Car, Wrench, Calendar, DollarSign } from "lucide-react"
+import { Calendar, User, Wrench, DollarSign, FileText } from "lucide-react"
+import { format } from "date-fns"
+import { ptBR } from "date-fns/locale"
 
 interface ServiceOrderDetailsModalProps {
+  serviceOrder: ServiceOrder | null
   isOpen: boolean
   onClose: () => void
-  serviceOrder: any
-  customer: any
-  motorcycle: any
+  onEdit?: (serviceOrder: ServiceOrder) => void
 }
 
-export function ServiceOrderDetailsModal({
-  isOpen,
-  onClose,
-  serviceOrder,
-  customer,
-  motorcycle,
-}: ServiceOrderDetailsModalProps) {
+const statusColors = {
+  pending: "bg-yellow-100 text-yellow-800",
+  in_progress: "bg-blue-100 text-blue-800",
+  completed: "bg-green-100 text-green-800",
+  cancelled: "bg-red-100 text-red-800",
+}
+
+const statusLabels = {
+  pending: "Pendente",
+  in_progress: "Em Andamento",
+  completed: "Concluída",
+  cancelled: "Cancelada",
+}
+
+export function ServiceOrderDetailsModal({ serviceOrder, isOpen, onClose, onEdit }: ServiceOrderDetailsModalProps) {
   if (!serviceOrder) return null
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("pt-BR", {
-      style: "currency",
-      currency: "BRL",
-    }).format(value)
-  }
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "open":
-        return <Badge variant="outline">Aberta</Badge>
-      case "in_progress":
-        return <Badge>Em Andamento</Badge>
-      case "waiting_parts":
-        return <Badge variant="outline">Aguardando Peças</Badge>
-      case "completed":
-        return <Badge>Concluída</Badge>
-      case "delivered":
-        return <Badge>Entregue</Badge>
-      default:
-        return <Badge variant="outline">{status}</Badge>
-    }
-  }
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Wrench className="h-5 w-5" />
-            Ordem de Serviço #{serviceOrder.orderNumber}
+            Ordem de Serviço #{serviceOrder.id}
           </DialogTitle>
-          <DialogDescription>Detalhes completos da ordem de serviço</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6">
+          {/* Status e Informações Básicas */}
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium">Status:</span>
-              {getStatusBadge(serviceOrder.status)}
-            </div>
-            <div className="text-sm text-muted-foreground">
-              Criada em {serviceOrder.createdAt?.toLocaleDateString("pt-BR")}
+            <Badge className={statusColors[serviceOrder.status]}>{statusLabels[serviceOrder.status]}</Badge>
+            <div className="flex gap-2">
+              {onEdit && (
+                <Button variant="outline" onClick={() => onEdit(serviceOrder)}>
+                  Editar
+                </Button>
+              )}
+              <Button variant="outline" onClick={onClose}>
+                Fechar
+              </Button>
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Informações do Cliente */}
             <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm flex items-center gap-2">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
                   <User className="h-4 w-4" />
                   Cliente
                 </CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <p className="font-medium">{customer?.name || "Cliente não encontrado"}</p>
-                  <p className="text-sm text-muted-foreground">{customer?.email}</p>
-                  <p className="text-sm text-muted-foreground">{customer?.phone}</p>
-                </div>
+              <CardContent className="space-y-2">
+                <p>
+                  <strong>Nome:</strong> {serviceOrder.customer_name}
+                </p>
+                <p>
+                  <strong>Email:</strong> {serviceOrder.customer_email}
+                </p>
+                <p>
+                  <strong>Telefone:</strong> {serviceOrder.customer_phone}
+                </p>
               </CardContent>
             </Card>
 
+            {/* Informações da Moto */}
             <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Car className="h-4 w-4" />
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Wrench className="h-4 w-4" />
                   Motocicleta
                 </CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <p className="font-medium">
-                    {motorcycle ? `${motorcycle.brand} ${motorcycle.model}` : "Moto não encontrada"}
-                  </p>
-                  <p className="text-sm text-muted-foreground">Ano: {motorcycle?.year}</p>
-                  <p className="text-sm text-muted-foreground">Placa: {motorcycle?.licensePlate}</p>
-                </div>
+              <CardContent className="space-y-2">
+                <p>
+                  <strong>Modelo:</strong> {serviceOrder.motorcycle_model}
+                </p>
+                <p>
+                  <strong>Ano:</strong> {serviceOrder.motorcycle_year}
+                </p>
+                <p>
+                  <strong>Placa:</strong> {serviceOrder.motorcycle_plate}
+                </p>
               </CardContent>
             </Card>
           </div>
 
+          {/* Datas */}
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm">Descrição do Problema</CardTitle>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Calendar className="h-4 w-4" />
+                Cronograma
+              </CardTitle>
             </CardHeader>
-            <CardContent>
-              <p className="text-sm">{serviceOrder.problemDescription || "Nenhuma descrição fornecida"}</p>
+            <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <p className="font-medium text-sm text-gray-600">Data de Criação</p>
+                <p>{format(new Date(serviceOrder.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}</p>
+              </div>
+              {serviceOrder.scheduled_date && (
+                <div>
+                  <p className="font-medium text-sm text-gray-600">Data Agendada</p>
+                  <p>{format(new Date(serviceOrder.scheduled_date), "dd/MM/yyyy", { locale: ptBR })}</p>
+                </div>
+              )}
+              {serviceOrder.completed_at && (
+                <div>
+                  <p className="font-medium text-sm text-gray-600">Data de Conclusão</p>
+                  <p>{format(new Date(serviceOrder.completed_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}</p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
-          {serviceOrder.serviceDescription && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm">Serviços Realizados</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm">{serviceOrder.serviceDescription}</p>
-              </CardContent>
-            </Card>
-          )}
+          {/* Descrição do Serviço */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <FileText className="h-4 w-4" />
+                Descrição do Serviço
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="whitespace-pre-wrap">{serviceOrder.description}</p>
+            </CardContent>
+          </Card>
 
-          <div className="grid gap-4 md:grid-cols-3">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Calendar className="h-4 w-4" />
-                  Datas
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <div>
-                  <p className="text-xs text-muted-foreground">Início</p>
-                  <p className="text-sm">
-                    {serviceOrder.startDate ? serviceOrder.startDate.toLocaleDateString("pt-BR") : "Não iniciada"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Previsão</p>
-                  <p className="text-sm">
-                    {serviceOrder.estimatedCompletion
-                      ? serviceOrder.estimatedCompletion.toLocaleDateString("pt-BR")
-                      : "Não definida"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Conclusão</p>
-                  <p className="text-sm">
-                    {serviceOrder.completionDate
-                      ? serviceOrder.completionDate.toLocaleDateString("pt-BR")
-                      : "Não concluída"}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <DollarSign className="h-4 w-4" />
-                  Valores
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <div>
-                  <p className="text-xs text-muted-foreground">Mão de Obra</p>
-                  <p className="text-sm font-medium">{formatCurrency(serviceOrder.laborCost || 0)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Peças</p>
-                  <p className="text-sm font-medium">{formatCurrency(serviceOrder.partsCost || 0)}</p>
-                </div>
-                <Separator />
-                <div>
-                  <p className="text-xs text-muted-foreground">Total</p>
-                  <p className="text-sm font-bold">{formatCurrency(serviceOrder.totalCost || 0)}</p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Clock className="h-4 w-4" />
-                  Tempo
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <div>
-                  <p className="text-xs text-muted-foreground">Estimado</p>
-                  <p className="text-sm">{serviceOrder.estimatedHours || 0}h</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Trabalhado</p>
-                  <p className="text-sm">{serviceOrder.actualHours || 0}h</p>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
+          {/* Observações */}
           {serviceOrder.notes && (
             <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm">Observações</CardTitle>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <FileText className="h-4 w-4" />
+                  Observações
+                </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-sm">{serviceOrder.notes}</p>
+                <p className="whitespace-pre-wrap">{serviceOrder.notes}</p>
               </CardContent>
             </Card>
           )}
+
+          {/* Valor Total */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <DollarSign className="h-4 w-4" />
+                Valor Total
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold text-green-600">
+                {new Intl.NumberFormat("pt-BR", {
+                  style: "currency",
+                  currency: "BRL",
+                }).format(serviceOrder.total_amount)}
+              </p>
+            </CardContent>
+          </Card>
         </div>
       </DialogContent>
     </Dialog>

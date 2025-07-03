@@ -1,166 +1,270 @@
 "use client"
 
-import type React from "react"
-
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
+import type { Part } from "@/domain/entities/part"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useToast } from "@/hooks/use-toast"
+
+const partSchema = z.object({
+  name: z.string().min(1, "Nome é obrigatório"),
+  description: z.string().optional(),
+  code: z.string().min(1, "Código é obrigatório"),
+  category: z.string().min(1, "Categoria é obrigatória"),
+  quantity: z.number().min(0, "Quantidade deve ser maior ou igual a 0"),
+  minimum_stock: z.number().min(0, "Estoque mínimo deve ser maior ou igual a 0"),
+  unit: z.string().min(1, "Unidade é obrigatória"),
+  cost_price: z.number().min(0, "Preço de custo deve ser maior ou igual a 0"),
+  sale_price: z.number().min(0, "Preço de venda deve ser maior ou igual a 0"),
+  supplier: z.string().optional(),
+  location: z.string().optional(),
+})
+
+type PartFormData = z.infer<typeof partSchema>
 
 interface PartFormProps {
-  categories: any[]
-  initialData?: any
-  onSubmit: (data: any) => void
-  onCancel: () => void
+  part?: Part | null
+  isOpen: boolean
+  onClose: () => void
+  onSubmit: (data: PartFormData) => Promise<void>
 }
 
-export function PartForm({ categories, initialData, onSubmit, onCancel }: PartFormProps) {
-  const [formData, setFormData] = useState({
-    name: initialData?.name || "",
-    partNumber: initialData?.partNumber || "",
-    description: initialData?.description || "",
-    categoryId: initialData?.categoryId || "",
-    costPrice: initialData?.costPrice || "",
-    salePrice: initialData?.salePrice || "",
-    stockQuantity: initialData?.stockQuantity || "",
-    minStockLevel: initialData?.minStockLevel || "",
-    location: initialData?.location || "",
-    supplier: initialData?.supplier || "",
+const categories = [
+  "Motor",
+  "Transmissão",
+  "Freios",
+  "Suspensão",
+  "Elétrica",
+  "Carroceria",
+  "Pneus",
+  "Filtros",
+  "Óleos",
+  "Outros",
+]
+
+const units = ["UN", "PC", "KG", "L", "M", "M²", "M³", "CX", "PCT", "PAR"]
+
+export function PartForm({ part, isOpen, onClose, onSubmit }: PartFormProps) {
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const { toast } = useToast()
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    setValue,
+    watch,
+    formState: { errors },
+  } = useForm<PartFormData>({
+    resolver: zodResolver(partSchema),
+    defaultValues: {
+      name: "",
+      description: "",
+      code: "",
+      category: "",
+      quantity: 0,
+      minimum_stock: 0,
+      unit: "UN",
+      cost_price: 0,
+      sale_price: 0,
+      supplier: "",
+      location: "",
+    },
   })
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    onSubmit({
-      ...formData,
-      costPrice: Number.parseFloat(formData.costPrice) || 0,
-      salePrice: Number.parseFloat(formData.salePrice) || 0,
-      stockQuantity: Number.parseInt(formData.stockQuantity) || 0,
-      minStockLevel: Number.parseInt(formData.minStockLevel) || 0,
-    })
+  const selectedCategory = watch("category")
+  const selectedUnit = watch("unit")
+
+  useEffect(() => {
+    if (part) {
+      reset({
+        name: part.name,
+        description: part.description || "",
+        code: part.code,
+        category: part.category,
+        quantity: part.quantity,
+        minimum_stock: part.minimum_stock,
+        unit: part.unit,
+        cost_price: part.cost_price,
+        sale_price: part.sale_price,
+        supplier: part.supplier || "",
+        location: part.location || "",
+      })
+    } else {
+      reset({
+        name: "",
+        description: "",
+        code: "",
+        category: "",
+        quantity: 0,
+        minimum_stock: 0,
+        unit: "UN",
+        cost_price: 0,
+        sale_price: 0,
+        supplier: "",
+        location: "",
+      })
+    }
+  }, [part, reset])
+
+  const handleFormSubmit = async (data: PartFormData) => {
+    setIsSubmitting(true)
+    try {
+      await onSubmit(data)
+      toast({
+        title: "Sucesso",
+        description: part ? "Peça atualizada com sucesso!" : "Peça criada com sucesso!",
+      })
+      onClose()
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Ocorreu um erro ao salvar a peça.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="space-y-2">
-          <Label htmlFor="name">Nome da Peça *</Label>
-          <Input
-            id="name"
-            value={formData.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            required
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="partNumber">Código da Peça</Label>
-          <Input
-            id="partNumber"
-            value={formData.partNumber}
-            onChange={(e) => setFormData({ ...formData, partNumber: e.target.value })}
-          />
-        </div>
-      </div>
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{part ? "Editar Peça" : "Nova Peça"}</DialogTitle>
+        </DialogHeader>
 
-      <div className="space-y-2">
-        <Label htmlFor="description">Descrição</Label>
-        <Textarea
-          id="description"
-          value={formData.description}
-          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-        />
-      </div>
+        <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Nome *</Label>
+              <Input id="name" {...register("name")} placeholder="Nome da peça" />
+              {errors.name && <p className="text-sm text-red-600">{errors.name.message}</p>}
+            </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="categoryId">Categoria *</Label>
-        <Select value={formData.categoryId} onValueChange={(value) => setFormData({ ...formData, categoryId: value })}>
-          <SelectTrigger>
-            <SelectValue placeholder="Selecione uma categoria" />
-          </SelectTrigger>
-          <SelectContent>
-            {categories.map((category) => (
-              <SelectItem key={category.id} value={category.id}>
-                {category.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+            <div className="space-y-2">
+              <Label htmlFor="code">Código *</Label>
+              <Input id="code" {...register("code")} placeholder="Código da peça" />
+              {errors.code && <p className="text-sm text-red-600">{errors.code.message}</p>}
+            </div>
+          </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="space-y-2">
-          <Label htmlFor="costPrice">Preço de Custo *</Label>
-          <Input
-            id="costPrice"
-            type="number"
-            step="0.01"
-            value={formData.costPrice}
-            onChange={(e) => setFormData({ ...formData, costPrice: e.target.value })}
-            required
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="salePrice">Preço de Venda *</Label>
-          <Input
-            id="salePrice"
-            type="number"
-            step="0.01"
-            value={formData.salePrice}
-            onChange={(e) => setFormData({ ...formData, salePrice: e.target.value })}
-            required
-          />
-        </div>
-      </div>
+          <div className="space-y-2">
+            <Label htmlFor="description">Descrição</Label>
+            <Textarea id="description" {...register("description")} placeholder="Descrição da peça" rows={3} />
+          </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="space-y-2">
-          <Label htmlFor="stockQuantity">Quantidade em Estoque *</Label>
-          <Input
-            id="stockQuantity"
-            type="number"
-            value={formData.stockQuantity}
-            onChange={(e) => setFormData({ ...formData, stockQuantity: e.target.value })}
-            required
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="minStockLevel">Estoque Mínimo *</Label>
-          <Input
-            id="minStockLevel"
-            type="number"
-            value={formData.minStockLevel}
-            onChange={(e) => setFormData({ ...formData, minStockLevel: e.target.value })}
-            required
-          />
-        </div>
-      </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Categoria *</Label>
+              <Select value={selectedCategory} onValueChange={(value) => setValue("category", value)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a categoria" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((category) => (
+                    <SelectItem key={category} value={category}>
+                      {category}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.category && <p className="text-sm text-red-600">{errors.category.message}</p>}
+            </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="space-y-2">
-          <Label htmlFor="location">Localização</Label>
-          <Input
-            id="location"
-            value={formData.location}
-            onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="supplier">Fornecedor</Label>
-          <Input
-            id="supplier"
-            value={formData.supplier}
-            onChange={(e) => setFormData({ ...formData, supplier: e.target.value })}
-          />
-        </div>
-      </div>
+            <div className="space-y-2">
+              <Label>Unidade *</Label>
+              <Select value={selectedUnit} onValueChange={(value) => setValue("unit", value)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a unidade" />
+                </SelectTrigger>
+                <SelectContent>
+                  {units.map((unit) => (
+                    <SelectItem key={unit} value={unit}>
+                      {unit}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.unit && <p className="text-sm text-red-600">{errors.unit.message}</p>}
+            </div>
+          </div>
 
-      <div className="flex justify-end space-x-2">
-        <Button type="button" variant="outline" onClick={onCancel}>
-          Cancelar
-        </Button>
-        <Button type="submit">{initialData ? "Atualizar" : "Criar"} Peça</Button>
-      </div>
-    </form>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="quantity">Quantidade *</Label>
+              <Input id="quantity" type="number" min="0" step="1" {...register("quantity", { valueAsNumber: true })} />
+              {errors.quantity && <p className="text-sm text-red-600">{errors.quantity.message}</p>}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="minimum_stock">Estoque Mínimo *</Label>
+              <Input
+                id="minimum_stock"
+                type="number"
+                min="0"
+                step="1"
+                {...register("minimum_stock", { valueAsNumber: true })}
+              />
+              {errors.minimum_stock && <p className="text-sm text-red-600">{errors.minimum_stock.message}</p>}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="cost_price">Preço de Custo *</Label>
+              <Input
+                id="cost_price"
+                type="number"
+                min="0"
+                step="0.01"
+                {...register("cost_price", { valueAsNumber: true })}
+              />
+              {errors.cost_price && <p className="text-sm text-red-600">{errors.cost_price.message}</p>}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="sale_price">Preço de Venda *</Label>
+              <Input
+                id="sale_price"
+                type="number"
+                min="0"
+                step="0.01"
+                {...register("sale_price", { valueAsNumber: true })}
+              />
+              {errors.sale_price && <p className="text-sm text-red-600">{errors.sale_price.message}</p>}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="supplier">Fornecedor</Label>
+              <Input id="supplier" {...register("supplier")} placeholder="Nome do fornecedor" />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="location">Localização</Label>
+              <Input id="location" {...register("location")} placeholder="Ex: Prateleira A1" />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Salvando..." : part ? "Atualizar" : "Criar"}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
