@@ -77,11 +77,11 @@ export default function InventoryPage() {
   const {
     currentPage,
     totalPages,
-    paginatedItems: paginatedParts,
+    paginatedData: paginatedParts,
     goToPage,
     goToNextPage,
     goToPreviousPage,
-  } = usePagination(filteredParts, 10)
+  } = usePagination({ data: filteredParts, itemsPerPage: 10 })
 
   // Calculate stats
   const lowStockCount = parts.filter((part) => part.quantity <= part.minimum_stock && part.quantity > 0).length
